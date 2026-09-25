@@ -1,5 +1,6 @@
 """The gate between deciding to run a model and running it."""
 
+import contextlib
 import threading
 import time
 
@@ -154,7 +155,45 @@ def test_raw_reproduction_never_forces_a_hidden_research_tool(monkeypatch):
         switches={"paper_access": "raw_pdf", "execution_access": "raw_smrt", "harness": False},
     )
 
-    assert client.tool_choices == ["auto", "auto"]
+    # Raw mode may force its own minimum source -> computation -> chart progression, but
+    # never a tool from the structured research workflow it is meant to be compared against.
+    raw_tools = {"read_raw_paper", "run_raw_smrt", "plot"}
+    forced = [
+        choice["function"]["name"] for choice in client.tool_choices if choice != "auto"
+    ]
+    assert set(forced) <= raw_tools
+
+
+def test_raw_reproduction_cannot_stop_after_reading_one_page(monkeypatch):
+    # The sequence the committed direct-LLM Q1 records show: an invalid journal page, a
+    # valid PDF page, then a statement of intent in place of an answer. The baseline must
+    # be sent on to computation instead of ending there.
+    box = session.new_session("m")
+    script = [
+        [_call_chunk("read_raw_paper", '{"doi":"10.5194/gmd-11-2763-2018","page":2768}')],
+        [_call_chunk("read_raw_paper", '{"doi":"10.5194/gmd-11-2763-2018","page":8}')],
+        [_Chunk(_Delta(content="I will reproduce Figure 3 by first reading the paper."))],
+        [_Chunk(_Delta(content="Still no run."))],
+    ]
+    client, _sent = _fake_client(script)
+    monkeypatch.setattr(agent.completion, "_client", lambda: client)
+
+    def fake_call(name, arguments, *args, **kwargs):
+        if arguments.get("page") == 2768:
+            return {"status": "terminal_error", "summary": "outside this 26-page PDF"}
+        kwargs["session"].setdefault("raw_pdf_pages_read", set()).add("page-8")
+        return {"status": "success", "summary": "raw page read", "data": {"page": 8}}
+
+    monkeypatch.setattr(agent.tools, "call", fake_call)
+    with contextlib.suppress(StopIteration):
+        agent.run(
+            "Reproduce Figure 3 of the SMRT paper",
+            session=box,
+            switches={"paper_access": "raw_pdf", "execution_access": "raw_smrt", "harness": False},
+        )
+
+    assert len(client.tool_choices) >= 4
+    assert client.tool_choices[3] == {"type": "function", "function": {"name": "run_raw_smrt"}}
 
 
 def test_a_truncated_research_plan_gets_one_larger_retry_budget(monkeypatch):

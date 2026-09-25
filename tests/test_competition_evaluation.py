@@ -23,7 +23,7 @@ def _load_runner(name):
     return module
 
 
-def test_frozen_competition_matrix_is_four_llms_three_prompts_two_repeats():
+def test_frozen_competition_matrix_is_four_llms_one_prompt_two_conditions():
     competition = _load_runner("competition")
     cells = competition.matrix(
         type(
@@ -32,19 +32,10 @@ def test_frozen_competition_matrix_is_four_llms_three_prompts_two_repeats():
             {"tasks": None, "profiles": None, "configs": None, "llm": None, "repeats": None},
         )()
     )
-    assert len(cells) == 5 * 3 * 1 * 4 * 2
-    assert {cell[0]["id"] for cell in cells} == {
-        "q1-sparse-medium",
-        "q2-dmrt-comparison",
-        "q3-memls-comparison",
-        "q4-microstructure-equivalence",
-        "p-smrt-density-above-ice",
-    }
-    assert {cell[1]["id"] for cell in cells} == {
-        "p0-explore-refine-produce",
-        "p1-reproduction-first",
-        "p3-uncertainty-aware",
-    }
+    assert len(cells) == 2 * 1 * 2 * 4 * 3
+    assert {cell[0]["id"] for cell in cells} == {"q1-sparse-medium", "p-smrt-density-above-ice"}
+    assert {cell[1]["id"] for cell in cells} == {"p1-reproduction-first"}
+    assert {cell[2]["name"] for cell in cells} == {"full", "no-harness"}
     assert {cell[3] for cell in cells} == {
         "qwen/qwen3.5-122b-a10b",
         "deepseek/deepseek-v4-flash-0731",
@@ -62,7 +53,7 @@ def test_competition_matrix_can_run_a_bounded_ablation_pair():
             {
                 "tasks": ["q1-sparse-medium"],
                 "profiles": ["p1-reproduction-first"],
-                "configs": ["no-harness", "no-figures"],
+                "configs": ["full", "no-harness"],
                 "llm": ["qwen-plus"],
                 "repeats": 1,
             },
@@ -70,10 +61,10 @@ def test_competition_matrix_can_run_a_bounded_ablation_pair():
     )
 
     assert len(cells) == 2
-    assert {cell[2]["name"] for cell in cells} == {"no-harness", "no-figures"}
+    assert {cell[2]["name"] for cell in cells} == {"full", "no-harness"}
 
 
-def test_three_condition_runs_use_balanced_repeat_order():
+def test_harness_and_direct_llm_runs_use_balanced_repeat_order():
     competition = _load_runner("competition")
     cells = competition.matrix(
         type(
@@ -82,7 +73,7 @@ def test_three_condition_runs_use_balanced_repeat_order():
             {
                 "tasks": ["q1-sparse-medium"],
                 "profiles": ["p1-reproduction-first"],
-                "configs": ["full", "no-harness", "no-figures"],
+                "configs": ["full", "no-harness"],
                 "llm": ["qwen-plus"],
                 "repeats": 3,
             },
@@ -96,11 +87,8 @@ def test_three_condition_runs_use_balanced_repeat_order():
     assert [(item[5], item[3]["name"]) for item in ordered] == [
         (1, "full"),
         (1, "no-harness"),
-        (1, "no-figures"),
         (2, "no-harness"),
-        (2, "no-figures"),
         (2, "full"),
-        (3, "no-figures"),
         (3, "full"),
         (3, "no-harness"),
     ]
@@ -119,7 +107,6 @@ def test_execute_without_batch_approval_stops_before_any_paid_call(capsys):
             "--configs",
             "full",
             "no-harness",
-            "no-figures",
             "--llm",
             "qwen-plus",
             "--repeats",
@@ -128,10 +115,9 @@ def test_execute_without_batch_approval_stops_before_any_paid_call(capsys):
     )
     output = capsys.readouterr().out
     assert result == 3
-    assert "candidate sessions: 9" in output
+    assert "candidate sessions: 6" in output
     assert "full | qwen-plus | r1" in output
     assert "no-harness | qwen-plus | r1" in output
-    assert "no-figures | qwen-plus | r1" in output
     assert "30 maximum" in output
     assert "No LLM or physical-model call was made" in output
 
@@ -639,8 +625,12 @@ def test_false_premise_can_end_safely_without_a_completed_plan():
     assert workflow["checks"]["planning_skipped_for_impossible_premise"] is True
 
 
-def test_false_premise_runner_disables_research_plan_gate(monkeypatch):
+def test_false_premise_runner_disables_research_plan_gate(monkeypatch, tmp_path):
     competition = _load_runner("competition")
+    # The runner archives each report; keep this fake one out of the committed results.
+    monkeypatch.setattr(competition.common, "REPO", tmp_path)
+    monkeypatch.setattr(competition, "REPORTS", tmp_path / "reports")
+    monkeypatch.setattr(competition, "FIGURES", tmp_path / "figures")
     captured = {}
 
     def fake_run(prompt, model, session, switches):
@@ -677,153 +667,6 @@ def test_false_premise_runner_disables_research_plan_gate(monkeypatch):
     assert captured["research_required"] is False
     assert record["workflow"]["approval_policy"] == "not_applicable_safe_refusal"
     assert record["workflow"]["review_actions"] == []
-
-
-def test_empty_dashboard_is_self_contained():
-    dashboard = _load_runner("dashboard")
-    page = dashboard.build_html([], registry={}, demo={})
-    assert 'id="registration"' in page
-    assert 'id="paper"' in page
-    assert "SMRT" in page
-    assert "OpenRouter" not in page
-    assert "ModelScope" not in page
-    assert "provider" not in page.lower()
-    assert "smoke" not in page.lower()
-    assert "usage ledger" not in page.lower()
-    assert "tier 0" not in page.lower()
-    assert "tier 1" not in page.lower()
-    assert "tier 2" not in page.lower()
-    assert "__REGISTERED__" not in page
-    assert "__MODEL_ROWS__" not in page
-    assert "__PAPER_ROWS__" not in page
-
-
-def test_registration_demo_result_is_explicit_about_default_runs():
-    payload = json.loads(
-        (EVAL / "results" / "registration_demo.json").read_text(encoding="utf-8")
-    )
-    assert payload["schema_version"] == "registration-demo-v1"
-    assert payload["execution"] == "deterministic"
-    assert payload["n_models"] == 6
-    assert {record["model"] for record in payload["records"]} == {
-        "prosail",
-        "pyet",
-        "pywatershed",
-        "smrt",
-        "tau_omega",
-        "water_cloud",
-    }
-    assert payload["n_passed"] == sum(record["passed"] for record in payload["records"])
-    assert all("version" in record for record in payload["records"])
-
-
-def test_dashboard_matrix_plan_separates_ranked_and_provider_diversity_cells():
-    dashboard = _load_runner("dashboard")
-    plan = dashboard.build_matrix_plan()
-    assert len(plan["tasks"]) == 5
-    assert len(plan["profiles"]) == 3
-    assert len(plan["scenarios"]) == 15
-    assert plan["main_cells"] == 120
-    assert plan["diversity_cells"] == 15
-    assert plan["total_cells"] == 135
-    main = [model for model in plan["models"] if model["track"] == "main"]
-    diversity = [
-        model for model in plan["models"] if model["track"] == "provider_diversity"
-    ]
-    assert len(main) == 4
-    assert all(model["provider"] == "openrouter" and model["ranked"] for model in main)
-    assert diversity == [
-        {
-            "id": "Shanghai_AI_Laboratory/Intern-S2-Preview",
-            "label": "Intern-S2 Preview",
-            "provider": "modelscope",
-            "track": "provider_diversity",
-            "track_label": "ModelScope diversity",
-            "repeats": 1,
-            "ranked": False,
-        }
-    ]
-
-
-def test_usage_ledger_includes_failures_and_leaves_unrun_models_na():
-    dashboard = _load_runner("dashboard")
-    readiness = {
-        "providers": [
-            {
-                "provider": "openrouter",
-                "models": [
-                    {"id": "model-a", "available": True},
-                    {"id": "model-b", "available": True},
-                ],
-            }
-        ],
-        "smoke": {
-            "provider": "openrouter",
-            "requested_model": "model-a",
-            "llm_usage": {"total_tokens": 10, "cost_usd": 0.001},
-        },
-    }
-    scored = [
-        {
-            "raw": {
-                "provider": "openrouter",
-                "llm": "model-a",
-                "llm_usage": {"total_tokens": 20, "cost_usd": 0.002},
-            }
-        }
-    ]
-    failures = [
-        {
-            "provider": "openrouter",
-            "llm": "model-a",
-            "llm_usage": {"total_tokens": 30, "cost_usd": 0.003},
-        }
-    ]
-    ledger = dashboard.build_usage_ledger(scored, readiness, failures)
-    model_a = next(item for item in ledger if item["model"] == "model-a")
-    model_b = next(item for item in ledger if item["model"] == "model-b")
-    assert model_a["total_tokens"] == 60
-    assert model_a["cost_usd"] == 0.006
-    assert model_a["scored_cells"] == 1
-    assert model_a["failed_attempts"] == 1
-    assert model_a["smoke_attempts"] == 1
-    assert model_b["total_tokens"] is None
-    assert model_b["cost_usd"] is None
-
-
-def test_llm_smoke_manifest_has_no_cross_provider_duplicates():
-    smoke = _load_runner("llm_smoke")
-    manifest = smoke.common.load_yaml(smoke.MANIFEST)
-    specs = smoke._provider_specs(manifest)
-    openrouter = set(next(x for x in specs if x["provider"] == "openrouter")["models"])
-    modelscope = set(next(x for x in specs if x["provider"] == "modelscope")["models"])
-    assert len(openrouter) == 4
-    assert modelscope == {"Shanghai_AI_Laboratory/Intern-S2-Preview"}
-    assert openrouter.isdisjoint(modelscope)
-
-
-def test_registry_contract_covers_every_discovered_model():
-    runner = _load_runner("registry_contract")
-    from physearth import registry
-
-    records = [runner.inspect_model(model) for model in registry.all_models().values()]
-    assert records
-    assert all(record["passed"] for record in records)
-    for record in records:
-        coverage = record["coverage"]
-        checks = record["checks"]
-        assert sum(check["check"] == "range_guard" for check in checks) == (
-            2 * coverage["numeric_parameters"]
-        )
-        assert sum(check["check"] == "enum_guard" for check in checks) == (
-            coverage["enum_parameters"]
-        )
-        assert sum(check["check"] == "combination_guard" for check in checks) == (
-            coverage["combination_rules"]
-        )
-        assert sum(check["check"].startswith("sweep_") for check in checks) == (
-            4 if coverage["sweep_contract"] else 0
-        )
 
 
 def test_full_reproduction_is_ineligible_when_provenance_is_missing():

@@ -1,0 +1,45 @@
+version: "2026-09-25"
+name: PhysEarth competition evaluation
+scope: "Paper reproduction through the harness, compared with the direct-LLM raw baseline."
+
+# The matrix `evaluation/runners/competition.py` plans and runs by default. Each cell is one
+# task x prompt profile x configuration x LLM x repeat, cached independently.
+execution:
+  # `full` is the deployed Studio; `no-harness` is the direct-LLM raw baseline (publisher
+  # PDF pages and an unassisted upstream SMRT tool, no structured corpus or gates).
+  configs: [full, no-harness]
+  provider: openrouter
+  llms:
+    - qwen/qwen3.5-122b-a10b
+    - deepseek/deepseek-v4-flash-0731
+    - openai/gpt-5.6-luna
+    - z-ai/glm-4.7-flash
+  prompt_profiles:
+    - p1-reproduction-first
+  repeats: 3
+  approval_policy: scripted_accept_unmodified_plan
+  results_dir: evaluation/results/competition/runs
+
+competition_required:
+  t2_paper_reconstruction:
+    core_tasks:
+      - q1-sparse-medium
+    probe_tasks:
+      - p-smrt-density-above-ice
+
+# Removed from the matrix in 35eee2c and kept here so the history stays legible. Their
+# runners and tests are under tests/archive/ until they are restored or retired.
+archived:
+  tasks: [q2-dmrt-comparison, q3-memls-comparison, q4-microstructure-equivalence]
+  prompt_profiles: [p0-explore-refine-produce, p3-uncertainty-aware]
+  configs: [no-figures]
+  runners:
+    - evaluation/runners/tier0.py
+    - evaluation/runners/model_registration.py
+    - evaluation/runners/registry_contract.py
+    - evaluation/runners/dashboard.py
+    - evaluation/runners/llm_smoke.py
+    - evaluation/runners/llm_robustness.py
+
+reporting:
+  scored_records: evaluation/results/competition/scored_runs.json

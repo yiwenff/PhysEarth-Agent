@@ -123,3 +123,42 @@ splitter in `scripts/build_corpus.py` is generic JATS and already handles both; 
 **Done when** adding seventeen papers improves answers instead of degrading them, and a user
 can pull in two open-access papers mid-session and get an answer citing them, with the trace
 showing which citations are bundled, which are session-ingested and which are abstract-only.
+
+---
+
+## 4. Open follow-ups (recorded 2026-09-25)
+
+Not blocking the current Q1 comparison; each can be fixed later.
+
+- [ ] **Test every new registration, and show the user its progress.** When a model is
+      registered (a card and adapter, or `register_github_model_repo`) or a paper is added
+      (`ingest_paper`, or a new `knowledge/literature/` card), run the same checks the
+      bundled ones pass: card validation, an adapter smoke run, an oracle or replay check,
+      and for a paper, section and figure extraction. Stream each step into the trace as it
+      runs (pending, running, passed or failed, with the reason), so the user sees a
+      registration being tested rather than a silent success.
+- [ ] **Install on a local laptop.** Today it is `git clone`, `uv sync`, `python app.py`.
+      Target: `pipx install physearth-agent` (or `uvx`), with the corpus and models shipped
+      as package data (CC-BY and Apache licensed), console scripts `physearth studio`,
+      `physearth mcp` and `physearth approve <ticket>`, Gradio moved to an optional
+      `[studio]` extra, and a local OpenAI-compatible LLM (Ollama, LM Studio) with
+      `PHYSEARTH_ONLINE=0`. Check macOS, Windows and Linux, since pywatershed and pymupdf
+      have native dependencies.
+- [ ] **Audit parameter provenance against what the system recorded.** The research plan
+      already records `defaulted_parameters` for each run, independently of what the LLM
+      claims. Score the LLM's `condition_provenance` and the report's
+      `<parameter_provenance>` against it: a card default labelled as paper-derived is a
+      mislabel, and a default left unlabelled is an omission. A `paper` label also needs a
+      source span found in a section that was actually opened. Enable this for the
+      scientific-question tasks; `competition_score.provenance_score` skips them today.
+      The six committed Q1 reports all lack the provenance appendix (`appendix_missing`).
+- [ ] **Re-run Q1, harness against direct LLM.** The committed no-harness records predate
+      the forced read -> run -> plot progression (regression test:
+      `test_raw_reproduction_cannot_stop_after_reading_one_page`), so they are not a valid
+      baseline. Needs `PHYSEARTH_LLM_*` and `EVAL_LLM_*` credentials.
+- [ ] **Make the raw baseline general.** `run_raw_smrt` only returns a scattering
+      coefficient over density, so the direct-LLM arm cannot attempt any case but Figure 3.
+- [ ] **Add the pywatershed reproduction case** from HESS 30, 5195 (2026), with inputs from
+      Zenodo record 17180693. Neither host is reachable from the cloud environment yet.
+- [ ] **Restore or retire the archived tests** in `tests/archive/` together with their
+      runners. AGENTS.md still names tier0.py and model_registration.py as the gate.

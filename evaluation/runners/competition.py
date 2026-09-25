@@ -401,19 +401,21 @@ def _success_metric(record):
 
 
 def _balanced_pending_order(pending):
-    """Latin-square the three Q1 conditions so timing is not confounded by order."""
-    sequences = {
-        1: ("full", "no-harness", "no-figures"),
-        2: ("no-harness", "no-figures", "full"),
-        3: ("no-figures", "full", "no-harness"),
-    }
+    """Latin-square the conditions of a batch so timing is not confounded by order.
+
+    Repeat r runs the conditions rotated by r - 1, so every condition takes every position
+    once per cycle whatever conditions the batch holds.
+    """
+    names = []
+    for item in pending:
+        if item[3]["name"] not in names:
+            names.append(item[3]["name"])
 
     def order(item):
         _name, task, _profile, config_entry, _llm, repeat = item
-        sequence = sequences.get(repeat, sequences[1])
-        config_name = config_entry["name"]
-        rank = sequence.index(config_name) if config_name in sequence else len(sequence)
-        return (task["id"] != "q1-sparse-medium", repeat, rank, config_name)
+        shift = (repeat - 1) % len(names)
+        sequence = names[shift:] + names[:shift]
+        return (task["id"], repeat, sequence.index(config_entry["name"]))
 
     return sorted(pending, key=order)
 
