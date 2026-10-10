@@ -48,8 +48,11 @@ SPECS = [
             "name": "read_literature",
             "description": (
                 "Read one paper from the corpus. Called with only a slug it returns that paper's "
-                "section index. Called with a section_id it returns that section's full text. "
-                "Every scientific claim you make must come from a section you actually read here."
+                "section index. Called with a section_id it returns compact key information by "
+                "default, including available fields and missing-information hints. Use "
+                "detail='full' only to check a specific missing detail; do not reread a full "
+                "section when the key information already answers the question. Every scientific "
+                "claim you make must come from a section you actually read here."
             ),
             "parameters": {
                 "type": "object",
@@ -58,6 +61,15 @@ SPECS = [
                     "section_id": {
                         "type": "string",
                         "description": "Two-digit section id. Omit to get the section index.",
+                    },
+                    "detail": {
+                        "type": "string",
+                        "enum": ["key", "full"],
+                        "description": "Default key summary; use full only for a targeted missing detail.",
+                    },
+                    "focus": {
+                        "type": "string",
+                        "description": "Optional missing field or question to target in the key summary.",
                     },
                 },
                 "required": ["slug"],
@@ -227,7 +239,7 @@ PAPER_FIGURE_SPEC = {
     "type": "function",
     "function": {
         "name": "read_paper_figure",
-        "description": "Read metadata and the stored source asset for one extracted paper figure. It is not model output and is not digitized automatically.",
+        "description": "Read metadata and the stored source asset for one extracted paper figure. It is not model output and is not digitized automatically. Repeated reads in one session return cached metadata; inspect only if a required field is missing.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -243,11 +255,13 @@ PAPER_FIGURE_INSPECTION_SPEC = {
     "type": "function",
     "function": {
         "name": "inspect_paper_figure",
-        "description": (
-            "Inspect the extracted source-paper figure itself, not only its caption. Return the "
-            "source image when a vision-capable endpoint is configured, plus auditable visual "
-            "observations about axes, units, legends, panels, annotations and visible trends. "
-            "It never digitizes curve values and never treats a source image as model data."
+            "description": (
+                "Inspect the extracted source-paper figure itself, not only its caption. Return the "
+                "source image when a vision-capable endpoint is configured, plus auditable visual "
+                "observations about axes, units, legends, panels, annotations and visible trends. "
+                "It never digitizes curve values and never treats a source image as model data. "
+                "Repeat an inspection only when the requested focus is new or the first response "
+                "reports a missing observation."
         ),
         "parameters": {
             "type": "object",
@@ -335,7 +349,10 @@ RUN_MODEL_SPEC = {
             "sweep_parameter together with sweep_start and sweep_stop to vary one parameter "
             "instead of holding it fixed. Parameters are checked against the model's declared "
             "physical ranges and legal combinations before the model runs, and the result is "
-            "quality controlled afterwards."
+            "quality controlled afterwards. In an approved research plan, do not call this "
+            "tool for exploratory variations: the first unplanned configuration is refused "
+            "and further direct calls are disabled. Use run_planned_models with exact run_id "
+            "values from the approved plan instead."
         ),
         "parameters": {
             "type": "object",
@@ -378,6 +395,32 @@ RUN_PLANNED_MODEL_SPEC = {
                 }
             },
             "required": ["run_id"],
+        },
+    },
+}
+
+RUN_PLANNED_MODELS_SPEC = {
+    "type": "function",
+    "function": {
+        "name": "run_planned_models",
+        "description": (
+            "Execute several human-approved research-plan runs in one batch. Every run_id is "
+            "still checked against the same approved plan, validated, quality-controlled and "
+            "stored under its own result handle. A failed item does not erase successful items. "
+            "Use this instead of repeating run_planned_model for a chart's independent series."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "run_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Exact run ids from the approved plan's runs list.",
+                    "minItems": 1,
+                    "maxItems": 64,
+                }
+            },
+            "required": ["run_ids"],
         },
     },
 }
@@ -557,6 +600,7 @@ INGEST_SPEC = {
 SPECS.append(LIST_MODELS_SPEC)
 SPECS.append(RUN_MODEL_SPEC)
 SPECS.append(RUN_PLANNED_MODEL_SPEC)
+SPECS.append(RUN_PLANNED_MODELS_SPEC)
 SPECS.append(READ_REFERENCE_SPEC)
 SPECS.append(PLOT_SPEC)
 SPECS.append(ANALYSIS_SCRIPT_SPEC)
@@ -711,7 +755,9 @@ PLOT_PLANNED_CHART_SPEC = {
             "Render one selected human-approved research chart by chart_id. The backend "
             "collects every compatible successful planned run, expands multi-output charts "
             "such as V/H polarization, and supplies exact handles and axes to the renderer. "
-            "Use this after run_planned_model; do not manually rebuild its series list."
+            "Use this after run_planned_models; do not manually rebuild its series list. "
+            "With action=render_and_review, one call performs both render and Render QA; "
+            "do not follow it with separate render or review calls unless it returns an error."
         ),
         "parameters": {
             "type": "object",
@@ -722,11 +768,12 @@ PLOT_PLANNED_CHART_SPEC = {
                 },
                 "action": {
                     "type": "string",
-                    "enum": ["render", "review"],
+                    "enum": ["render", "review", "render_and_review"],
                     "description": (
-                        "Render first; after it is on screen, call again with review to run "
-                        "the automatic render check (data legibility only, not a comparison "
-                        "with the source figure)."
+                        "Use render_and_review to render and run the automatic render check in "
+                        "one operation. The separate render/review actions remain available "
+                        "for interactive hosts. Render QA checks data legibility only, not a "
+                        "comparison with the source figure."
                     ),
                 },
             },

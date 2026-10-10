@@ -72,6 +72,16 @@ def new_session(model=None):
             "sections": [],
             "paper_session": {},
         },
+        # Source reads are session-scoped.  The cache keeps the full source text inside the
+        # engine, while tool responses expose only the requested key information.  Nothing
+        # here is shared between arms or between benchmark sessions.
+        "literature_read_cache": {},
+        "paper_figure_read_cache": {},
+        "paper_figure_inspection_cache": {},
+        # A reviewed session has one execution surface: the approved run ids.  Remember
+        # the first direct violation so a model cannot probe dozens of rejected variants.
+        "unplanned_run_attempts": 0,
+        "unplanned_run_blocked": False,
         "abstracts": {},
         "evidence_ledger": [],
         "model_declarations": {},

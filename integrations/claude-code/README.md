@@ -17,16 +17,16 @@ integrations/claude-code/install.sh              # user scope; --scope project f
 
 Then start a **new** session — plugins, output styles and MCP servers are read at session start.
 
-The server is registered with run approval set to `ask`: a physical run stops with
-`awaiting_approval` until you answer, either in Claude Code's own prompt when the server can ask
-through MCP elicitation, or by telling Claude your verdict, which it passes to `physearth_decide`.
-To pre-approve runs as the operator, register the server with `--approval always` appended.
+The installer registers the shared `direct` profile: Claude Code owns the user-facing permission
+and session, while Python keeps model validation, result handles, QC, provenance and advisory
+report lint. The explicit `regulated` profile remains available for callers that intentionally
+want the nested research-agent loop, internal approval and hard report enforcement.
 
 ## What arrives, and which mechanism carries it
 
 | Piece | Component | What a user notices |
 |---|---|---|
-| 28 MCP tools | MCP server, registered by the installer | `run_model`, `research_plan`, `read_literature`, … as `mcp__physearth__*` |
+| Up to 28 MCP tools | MCP server, registered by the installer | `run_model`, `research_plan`, `read_literature`, … as `mcp__physearth__*`; direct mode hides nested-agent/review tools |
 | Workflow | `skills/physearth/` | the model knows which tool answers which geophysical question, and which refusals are results |
 | Answer discipline | `output-styles/physearth-brief.md` | every unit-bearing number is sourced, every claim carries a resolvable marker |
 | Colour | `themes/physearth-night.json` + the status line | ice/amber on a near-black field, and a coloured status row |
@@ -82,7 +82,7 @@ needs neither `cwd` nor `PYTHONPATH`:
 
 ```bash
 claude mcp add physearth --scope user -- \
-  /abs/python /abs/PhysEarth-Agent/integrations/physearth/mcp_server.py --stdio
+  /abs/python /abs/PhysEarth-Agent/integrations/physearth/mcp_server.py --stdio --profile direct
 ```
 
 Verified after install: `claude mcp list` → `physearth: … - ✓ Connected`.

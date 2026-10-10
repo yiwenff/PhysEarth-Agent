@@ -1,15 +1,16 @@
 # PhysEarth-Agent in Codex
 
-Two commands and a check. Everything the engine offers — 28 tools, the bundled CC-BY corpus,
-reference measurements, the research workflow with its approval gate — arrives through one MCP
+Two commands and a check. Everything the engine offers — up to 28 tools, the bundled CC-BY corpus,
+reference measurements, validation/QC/evidence and report lint — arrives through one MCP
 server; the skill in `.agents/skills/physearth/` is what tells Codex *how* to use it, and it is
 already in the repository, so there is nothing to install for it.
 
 Verified against **codex-cli 0.155.1**.
 
-Run approval is the operator's setting, fixed when the server starts: `ask` by default, or
-`--approval always` appended to the server's arguments to pre-approve. With `ask`, a physical run stops with
-`awaiting_approval`; Codex shows you the pending run and passes your answer to `physearth_decide`.
+The plugin uses the shared `direct` profile: Codex owns the user-facing permission and session,
+while Python keeps validation, result handles, QC, provenance and advisory report lint. The
+`regulated` profile remains available for an explicit nested research-agent workflow; it restores
+the internal approval gate and hard report enforcement.
 
 ## 1. Point Codex at an interpreter that has the engine
 
@@ -31,7 +32,7 @@ single most common way this integration appears broken.
 ```bash
 codex mcp add physearth -- \
   /path/to/PhysEarth-Agent/.venv/bin/python \
-  /path/to/PhysEarth-Agent/integrations/physearth/mcp_server.py --stdio
+  /path/to/PhysEarth-Agent/integrations/physearth/mcp_server.py --stdio --profile direct
 ```
 
 Use absolute paths: Codex launches the command from its own working directory.

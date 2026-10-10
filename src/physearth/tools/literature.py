@@ -20,6 +20,85 @@ from physearth.tools.figures import (
 )
 
 OUTPUT_BUDGET_CHARS = 16000
+KEY_INFORMATION_BUDGET_CHARS = 5200
+_FOCUS_STOPWORDS = {
+    "about", "after", "also", "and", "are", "from", "identify", "into", "that",
+    "the", "their", "this", "what", "when", "where", "with", "visible", "which",
+}
+
+
+def _section_cache_key(slug, section_id):
+    return "%s#%s" % (slug, section_id)
+
+
+def _key_information(text, focus=""):
+    """Select compact, source-ordered facts for the first read of a section.
+
+    The engine still opens and records the complete section internally.  The model receives
+    only the high-value paragraphs on the first pass; a targeted ``detail='full'`` read is
+    available when the returned ``missing_information`` says a needed fact was not present.
+    """
+    paragraphs = [
+        re.sub(r"\\s+", " ", paragraph).strip()
+        for paragraph in re.split(r"\\n\\s*\\n", str(text or ""))
+        if paragraph.strip()
+    ]
+    focus_terms = [
+        token for token in re.findall(r"[A-Za-z0-9_µ°-]{4,}", str(focus or "").lower())
+        if token not in _FOCUS_STOPWORDS
+    ]
+    scored = []
+    for index, paragraph in enumerate(paragraphs):
+        lowered = paragraph.lower()
+        score = 0
+        if index < 2:
+            score += 2
+        if re.search(r"\\d", paragraph):
+            score += 2
+        if any(word in lowered for word in (
+            "figure", "density", "frequency", "temperature", "radius", "stickiness",
+            "tau", "model", "converge", "diverge", "range", "parameter", "result",
+            "conclusion", "valid",
+        )):
+            score += 2
+        if focus_terms:
+            score += 5 * sum(1 for term in focus_terms if term in lowered)
+        scored.append((score, index, paragraph))
+
+    chosen = []
+    used = 0
+    for _score, _index, paragraph in sorted(scored, key=lambda item: (-item[0], item[1])):
+        if used + len(paragraph) + 2 > KEY_INFORMATION_BUDGET_CHARS:
+            continue
+        chosen.append((_index, paragraph))
+        used += len(paragraph) + 2
+        if used >= KEY_INFORMATION_BUDGET_CHARS:
+            break
+    chosen.sort()
+    key_text = "\\n\\n".join(paragraph for _index, paragraph in chosen)
+    matched_focus = {
+        term for term in focus_terms
+        if any(term in paragraph.lower() for _index, paragraph in chosen)
+    }
+    missing = [
+        term for term in focus_terms
+        if term not in matched_focus
+    ]
+    fields = []
+    field_terms = {
+        "figure_context": ("figure", "fig."),
+        "density": ("density", "kg m", "kg/m"),
+        "frequency": ("frequency", "ghz", "mhz"),
+        "temperature": ("temperature", "kelvin", " k "),
+        "microstructure": ("sphere", "microstructure", "qca", "iba", "dmrt"),
+        "parameter_range": ("range", "between", "from", "to"),
+        "result": ("result", "converge", "diverge", "show", "found"),
+    }
+    lowered = key_text.lower()
+    for field, terms in field_terms.items():
+        if any(term in lowered for term in terms):
+            fields.append(field)
+    return key_text, sorted(set(fields)), missing
 
 
 def list_literature(query="", scenario="", kind="paper", _session=None):
@@ -37,7 +116,17 @@ def list_literature(query="", scenario="", kind="paper", _session=None):
     )
 
 
-def read_literature(slug, section_id=None, _session=None, _switches=None):
+def read_literature(
+    slug,
+    section_id=None,
+    detail="key",
+    focus="",
+    _session=None,
+    _switches=None,
+):
+    detail = str(detail or "key").strip().lower()
+    if detail not in ("key", "full"):
+        return _fail("detail must be 'key' or 'full'.")
     item = live.card(_session, slug)
     if not item:
         known = sorted(set(knowledge.slugs(kind=None)) | set(live.corpus(_session)))
@@ -65,22 +154,48 @@ def read_literature(slug, section_id=None, _session=None, _switches=None):
                 ] if switches.resolve(_switches)["figures"] else [],
             },
         )
-    opened = live.wrapped_section(_session, slug, section_id, OUTPUT_BUDGET_CHARS)
+    cache_key = _section_cache_key(slug, section_id)
+    cache = (_session or {}).get("literature_read_cache") or {}
+    cached = cache.get(cache_key)
+    if cached is not None:
+        opened = {
+            "section": cached["section"],
+            "text": cached["text"],
+            "truncated": cached["truncated"],
+            "source": cached["source"],
+            "findings": cached.get("findings") or [],
+        }
+        cache_state = "hit"
+    else:
+        opened = live.wrapped_section(_session, slug, section_id, OUTPUT_BUDGET_CHARS)
+        cache_state = "miss"
     if opened is None:
         available = ", ".join(s["id"] for s in live.section_index(_session, slug) or ())
         return _fail(
             "Section %r not found in %s. Available section ids: %s." % (section_id, slug, available)
         )
     section = opened["section"]
+    if _session is not None and cached is None:
+        _session.setdefault("literature_read_cache", {})[cache_key] = {
+            "section": section,
+            "text": opened["text"],
+            "truncated": opened["truncated"],
+            "source": opened["source"],
+            "findings": opened.get("findings") or [],
+        }
+    key_text, available_fields, missing_information = _key_information(opened["text"], focus)
+    returned_text = opened["text"] if detail == "full" else key_text
+    returned_text = returned_text or opened["text"][:KEY_INFORMATION_BUDGET_CHARS]
     result = _ok(
-        "%s section %s: %s (%d chars%s, %s)"
+        "%s section %s: %s (%d chars%s, %s; %s read)"
         % (
             slug,
             section["section_id"],
             section["title"],
-            len(opened["text"]),
+            len(returned_text),
             ", truncated" if opened["truncated"] else "",
             opened["source"],
+            detail,
         ),
         {
             "slug": slug,
@@ -89,8 +204,19 @@ def read_literature(slug, section_id=None, _session=None, _switches=None):
             "doi": item.get("doi", ""),
             "citation_key": section["citation_key"],
             "source": opened["source"],
-            "text": opened["text"],
-            "external_source_findings": opened["findings"],
+            "text": untrusted.wrap(
+                returned_text,
+                section["citation_key"],
+                "published paper section (%s detail)" % detail,
+                item.get("license", ""),
+            ),
+            "key_information": [paragraph for paragraph in key_text.split("\\n\\n") if paragraph],
+            "available_information": available_fields,
+            "missing_information": missing_information,
+            "detail": detail,
+            "focus": str(focus or ""),
+            "cache_state": cache_state,
+            "external_source_findings": opened["findings"] if detail == "full" else untrusted.scan(key_text),
             # What this paper's figures are called, so a figure_id can be chosen: the
             # reproduction workflow requires a figure target to carry a figure actually
             # opened with read_paper_figure, and nothing else says which ids exist.
@@ -124,6 +250,8 @@ def read_literature(slug, section_id=None, _session=None, _switches=None):
             "title": section.get("title", ""),
             "source": opened["source"],
             "doi": item.get("doi", ""),
+            "cache_state": cache_state,
+            "detail": detail,
         },
     )
     return result
@@ -137,7 +265,7 @@ def read_research_guideline(topic="planning", _session=None):
         slug = "research-reporting"
     else:
         slug = topic
-    result = read_literature(slug, "00", _session=_session)
+    result = read_literature(slug, "00", detail="full", _session=_session)
     if result["status"] == "success":
         if _session is not None:
             _session.setdefault("research_guidelines_read", set()).add(slug)
@@ -441,9 +569,24 @@ def read_paper_figure(paper, figure_id, _session=None):
             )
         )
     citation_key = "%s#fig-%s" % (paper, resolved_figure_id)
+    cache_key = "%s#%s" % (paper, resolved_figure_id)
+    figure_cache = (_session or {}).get("paper_figure_read_cache") or {}
+    cached_payload = figure_cache.get(cache_key)
+    if cached_payload is not None:
+        cached = dict(cached_payload)
+        cached["cache_state"] = "hit"
+        return _ok(
+            "Source-paper figure %s was already read in this session; returned cached metadata."
+            % resolved_figure_id,
+            {"paper": paper, "figure": cached, "citation_key": citation_key, "cache_state": "hit"},
+            citations=[citation_key],
+        )
     payload = dict(figure)
     payload.pop("asset_bytes", None)
     payload["citation_key"] = citation_key
+    payload["cache_state"] = "miss"
+    if _session is not None:
+        _session.setdefault("paper_figure_read_cache", {})[cache_key] = dict(payload)
     if _session is not None:
         _session.setdefault("paper_figures_read", set()).add("%s#%s" % (paper, resolved_figure_id))
     result = _ok(
@@ -482,6 +625,18 @@ def inspect_paper_figure(paper, figure_id, focus="", _session=None):
     figure = _paper_figure(item, figure_id)
     resolved_figure_id = str(figure.get("id")) if figure else _figure_id_key(figure_id)
     reference = "%s#fig-%s" % (paper, resolved_figure_id)
+    cache_key = "%s#%s#%s" % (paper, resolved_figure_id, str(focus or "").strip().lower())
+    inspection_cache = (_session or {}).get("paper_figure_inspection_cache") or {}
+    cached_inspection = inspection_cache.get(cache_key)
+    if cached_inspection is not None:
+        cached = dict(cached_inspection)
+        cached["cache_state"] = "hit"
+        return _ok(
+            "Source-paper figure %s inspection was already completed in this session; returned cached observations."
+            % resolved_figure_id,
+            cached,
+            citations=[reference],
+        )
     if figure is None:
         _ledger(
             _session,
@@ -593,6 +748,7 @@ def inspect_paper_figure(paper, figure_id, focus="", _session=None):
         "availability_reason": availability_reason,
         "visual_observations": visual,
         "numeric_digitization": "not performed",
+        "cache_state": "miss",
     }
     if image_data_url:
         data["image_data_url"] = image_data_url
@@ -614,6 +770,9 @@ def inspect_paper_figure(paper, figure_id, focus="", _session=None):
     )
     if _session is not None:
         _session.setdefault("paper_figures_inspected", set()).add("%s#%s" % (paper, resolved_figure_id))
+        cached_data = dict(data)
+        cached_data.pop("image_data_url", None)
+        _session.setdefault("paper_figure_inspection_cache", {})[cache_key] = cached_data
     if image_data_url:
         inspection_note = (
             "The source image is attached for visual review; extracted axes and legend text "

@@ -25,12 +25,13 @@
 # `cwd` on the module path nor PYTHONPATH, because the file bootstraps the repository root and
 # `backend/` from its own location. Nothing else in this block is load-bearing.
 command = "/absolute/path/to/PhysEarth-Agent/.venv/bin/python"
-args = ["/absolute/path/to/PhysEarth-Agent/integrations/physearth/mcp_server.py", "--stdio"]
+args = ["/absolute/path/to/PhysEarth-Agent/integrations/physearth/mcp_server.py", "--stdio", "--profile", "direct"]
 cwd = "/absolute/path/to/PhysEarth-Agent"
 enabled = true
 # `required = false`: a missing interpreter should leave Codex usable with this server absent,
 # rather than refusing to start the session.
 required = false
+# The direct profile keeps the host's permission boundary and the engine's validation/QC/evidence.
 # The default is 10 s. A scientific Python import on a cold filesystem exceeds it, and a server
 # that misses the window shows up as a server with no tools.
 startup_timeout_sec = 30
@@ -56,5 +57,5 @@ env_vars = ["PATH", "PYTHONPATH", "VIRTUAL_ENV"]
 # default_tools_approval_mode = "prompt"
 #
 # [mcp_servers.physearth.tools.run_model]
-# approval_mode = "approve"      # a physical run always wants a human, in Codex too
+# approval_mode = "prompt"       # optional host-level confirmation for this tool
 # output_token_limit = 4000      # the preview, not the arrays: those stay in the session

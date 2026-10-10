@@ -32,7 +32,9 @@ export const DEFAULTS = Object.freeze({
   pythonCmd: 'python3',
   /** Repository root the bridge is started in; empty means "inherit the host cwd". */
   projectRoot: '',
-  /** Start the bridge with runs approved in advance (`--approval always`); off means ask. */
+  /** Shared Python host policy; direct keeps validation/QC/evidence and leaves permission to DSH. */
+  policyProfile: 'direct',
+  /** Legacy operator override for regulated mode (`--approval always`); off means ask. */
   approveRuns: false,
   /** Visual accent of the Geo-AI surface. */
   accent: 'ice',
@@ -67,6 +69,7 @@ export const ACCENTS = ['ice', 'amber', 'deep-blue']
 
 /** The `promptDepth` choices a card offers, in the order it lists them. */
 export const PROMPT_DEPTHS = ['compact', 'rules', 'full', 'off']
+export const POLICY_PROFILES = ['direct', 'regulated']
 
 /** Engine tools this plugin surfaces, in the order a reviewer reads them. */
 export const ENGINE_TOOLS = [
@@ -81,7 +84,7 @@ export const ENGINE_TOOLS = [
   'read_reference_dataset',
 ]
 
-export const HOST_TOOLS = ['physearth_health', 'physearth_ask', 'physearth_evidence', 'physearth_plan_status', 'physearth_review']
+export const HOST_TOOLS = ['physearth_health', 'physearth_session_new', 'physearth_evidence', 'physearth_verify_report', 'physearth_prompt_stack']
 
 /** Short labels and tones for the run-trace cards the browser half draws. */
 export const TOOL_CARDS = {
@@ -95,6 +98,7 @@ export const TOOL_CARDS = {
   read_reference_dataset: { title: 'Measurement read', icon: 'ruler', fields: ['dataset', 'rows'] },
   physearth_ask: { title: 'Geo-AI question', icon: 'sparkles', fields: ['session_id', 'counters'] },
   physearth_evidence: { title: 'Evidence gathered', icon: 'shield', fields: ['counts'] },
+  physearth_verify_report: { title: 'Report lint', icon: 'check', fields: ['mode', 'passed', 'checks'] },
 }
 
 /** Result fields a reviewer must be able to audit without opening the raw payload. */
@@ -149,6 +153,10 @@ export function normaliseSettings(raw, fallback = DEFAULTS) {
     // told and leave nothing anywhere that says so.
     warnings.push(`promptDepth ${JSON.stringify(merged.promptDepth)} is unknown; using ${fallback.promptDepth} (known: ${PROMPT_DEPTHS.join(', ')})`)
     merged.promptDepth = fallback.promptDepth
+  }
+  if (!POLICY_PROFILES.includes(merged.policyProfile)) {
+    warnings.push(`policyProfile ${JSON.stringify(merged.policyProfile)} is unknown; using ${fallback.policyProfile}`)
+    merged.policyProfile = fallback.policyProfile
   }
   merged.pythonCmd = String(merged.pythonCmd || fallback.pythonCmd).trim() || fallback.pythonCmd
   merged.projectRoot = String(merged.projectRoot || '').trim()
@@ -273,6 +281,7 @@ export function bridgeCommand(settings) {
     args: [
       '-m', 'integrations.physearth', 'serve-http', '--host', '127.0.0.1', '--port', String(portOf(settings.bridgeUrl)),
       '--approval', settings.approveRuns ? 'always' : 'ask',
+      '--profile', settings.policyProfile || 'direct',
     ],
     cwd: settings.projectRoot || undefined,
     env: engineEnv(settings.projectRoot),

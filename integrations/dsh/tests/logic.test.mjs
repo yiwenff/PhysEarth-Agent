@@ -76,8 +76,9 @@ test('the bridge command matches the address the settings name', () => {
   const spec = bridgeCommand({ pythonCmd: 'python3', bridgeUrl: 'http://127.0.0.1:9123', projectRoot: '/repo' })
 
   assert.equal(spec.command, 'python3')
-  assert.deepEqual(spec.args, ['-m', 'integrations.physearth', 'serve-http', '--host', '127.0.0.1', '--port', '9123', '--approval', 'ask'])
-  assert.deepEqual(bridgeCommand({ pythonCmd: 'python3', approveRuns: true }).args.slice(-2), ['--approval', 'always'])
+  assert.deepEqual(spec.args, ['-m', 'integrations.physearth', 'serve-http', '--host', '127.0.0.1', '--port', '9123', '--approval', 'ask', '--profile', 'direct'])
+  assert.deepEqual(bridgeCommand({ pythonCmd: 'python3', approveRuns: true }).args.slice(-2), ['--profile', 'direct'])
+  assert.ok(bridgeCommand({ pythonCmd: 'python3', approveRuns: true }).args.includes('always'))
   assert.equal(spec.cwd, '/repo')
   assert.equal(portOf('not a url'), 8799)
 })
@@ -119,7 +120,7 @@ test('the bundle patch mounts the plugin and the MCP row that brings the tools',
   assert.match(patch, /@deepseek-ai\/dsh-mcp-client/)
   assert.match(patch, /serverName: physearth/)
   assert.match(patch, /command: python3/)
-  assert.match(patch, /args: \['-m', 'integrations\.physearth', 'serve'\]/)
+  assert.match(patch, /args: \['-m', 'integrations\.physearth', 'serve', '--profile', 'direct'\]/)
   // Off by default.
   assert.match(patch, /enabled: false/)
   // And no placeholder: a patch layer cannot carry an absolute checkout path, and a later

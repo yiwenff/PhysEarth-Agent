@@ -5,8 +5,10 @@ kinds of thing, deliberately matching how this project itself separates them:
 
 - **tools** — the engine's own catalogue, one MCP tool per declared tool, so a host calls
   ``run_model`` exactly the way the research workflow does, with the same validation,
-  approval gate and quality control behind it.  Six host tools wrap the parts a turn
-  cannot express: health, session, one-shot question, evidence, plan review, prompt stack.
+  quality control and evidence bookkeeping behind it.  Both profiles require the
+  research-plan gate; the regulated profile additionally adds the original approval gate
+  and nested agent loop.  The direct profile leaves user-facing permission and reasoning
+  to the host, while exposing plan status/review so the host can complete the gate.
 - **resources** — the domain knowledge a model may *read*: the prompt stack, the registered
   models with their parameter declarations, the evidence catalogue, and every bundled paper
   section addressed by the same ``slug#section`` id a citation resolves to.
@@ -17,8 +19,8 @@ Two design rules are inherited from the repository rather than invented here.  A
 credential is reported as a structured refusal, never filled in with a locally invented
 answer; and whether a physical run waits for a person is the operator's choice, made with
 ``--approval`` when the server starts, never a tool argument the host's model could set.
-A run that waits is put to the person through MCP elicitation when the client offers it,
-and otherwise returned as a pending request that ``physearth_decide`` answers.
+A regulated run that waits is put to the person through MCP elicitation when the client offers
+it, and otherwise returned as a pending request that ``physearth_decide`` answers.
 """
 
 from __future__ import annotations
@@ -59,6 +61,7 @@ if __package__ in (None, ""):  # executed as a script rather than imported as a 
 
 from integrations.physearth import service
 from physearth import tools
+from physearth.harness import switches as harness_switches
 
 # Newest first. Elicitation, which asks the person before a physical run, exists from
 # 2025-06-18 on; a client that negotiates an older version gets physearth_decide instead.
@@ -177,6 +180,27 @@ HOST_TOOLS = (
             "properties": {
                 "session_id": {"type": "string"},
                 "text": {"type": "string", "description": "The full answer, with its markers."},
+                "mode": {
+                    "type": "string",
+                    "enum": ["lint", "hard"],
+                    "description": "Optional: advisory lint in direct mode or enforced checks in regulated mode.",
+                },
+            },
+            "required": ["session_id", "text"],
+        },
+    },
+    {
+        "name": "physearth_render_report",
+        "description": (
+            "Generate the final evidence-backed Markdown and HTML report after the approved "
+            "research plan and hard report checks pass. It refuses to materialize an unapproved "
+            "or unverifiable report."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "text": {"type": "string", "description": "The report narrative with evidence markers."},
             },
             "required": ["session_id", "text"],
         },
@@ -245,9 +269,18 @@ def _engine_tools():
     evaluation's direct-LLM arm only, and the engine refuses them in every other setting.
     """
     declared = []
+    hidden = set()
+    if service.profile()["name"] == "direct":
+        # Direct hosts still use the same plan -> review -> planned-run path.  Only the
+        # nested agent and its operator approval surface remain regulated-only.
+        hidden = set()
     for spec in tools.specs():
         function = spec.get("function") or {}
-        if not function.get("name") or function["name"] in tools.HOST_RUNS_PYTHON:
+        if (
+            not function.get("name")
+            or function["name"] in tools.HOST_RUNS_PYTHON
+            or function["name"] in hidden
+        ):
             continue
         declared.append(
             {
@@ -260,7 +293,14 @@ def _engine_tools():
 
 
 def _all_tools():
-    return list(_engine_tools()) + list(HOST_TOOLS)
+    host_tools = list(HOST_TOOLS)
+    if service.profile()["name"] == "direct":
+        hidden = {
+            "physearth_ask",
+            "physearth_decide",
+        }
+        host_tools = [tool for tool in host_tools if tool["name"] not in hidden]
+    return list(_engine_tools()) + host_tools
 
 
 def _call_host_tool(name, arguments):
@@ -285,7 +325,18 @@ def _call_host_tool(name, arguments):
         )
     if name == "physearth_verify_report":
         return _json_text(
-            service.verify_report(arguments.get("session_id"), arguments.get("text", ""))
+            service.verify_report(
+                arguments.get("session_id"),
+                arguments.get("text", ""),
+                mode=arguments.get("mode"),
+            )
+        )
+    if name == "physearth_render_report":
+        return _json_text(
+            service.render_report(
+                arguments.get("session_id"),
+                arguments.get("text", ""),
+            )
         )
     if name == "physearth_evidence":
         return _json_text(service.evidence(arguments.get("session_id")))
@@ -632,15 +683,30 @@ def main(argv=None):
     every MCP client's documentation spells the invocation as ``mcp_server.py --stdio``, and
     a host that copies that line should not get an argparse error where a server belongs.
 
-    ``--approval`` is the operator's choice and is made here, once: ``ask`` (the default, or
-    ``PHYSEARTH_APPROVAL``) pauses before every physical run, ``always`` approves runs
-    in advance for everything this server does.
+    ``--approval``, ``--profile`` and explicit ``--testing`` are operator choices made here, once.  The MCP server's
+    generic default remains ``regulated`` for compatibility; plugin launchers pass
+    ``--profile direct`` explicitly so the host owns permission and the session is sticky.
     """
     parser = argparse.ArgumentParser(prog="physearth", add_help=False)
     parser.add_argument(
         "--approval",
         choices=service.APPROVAL_MODES,
         default=os.environ.get("PHYSEARTH_APPROVAL") or "ask",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=harness_switches.PROFILES,
+        default=os.environ.get("PHYSEARTH_PROFILE") or "regulated",
+    )
+    parser.add_argument(
+        "--testing",
+        action="store_true",
+        default=os.environ.get("PHYSEARTH_TESTING") == "1",
+        help=(
+            "benchmark mode: automatically apply the existing satisfied_figures review "
+            "action after a valid research plan and block the SMRT v1 paper repository "
+            "at the MCP HTTP boundary; never use this for unattended production work"
+        ),
     )
     args, rest = parser.parse_known_args(list(sys.argv[1:] if argv is None else argv))
     unknown = [item for item in rest if item not in ("--stdio", "--transport=stdio")]
@@ -649,7 +715,7 @@ def main(argv=None):
             f"physearth: ignoring unrecognised argument(s): {' '.join(unknown)}\n"
             "this server speaks newline-delimited JSON-RPC on stdin/stdout.\n"
         )
-    service.configure(approval_mode=args.approval)
+    service.configure(approval_mode=args.approval, profile=args.profile, testing=args.testing)
     channel = _Stdio(sys.stdin, sys.stdout)
     _CHANNEL["io"] = channel
     for request in channel.messages():

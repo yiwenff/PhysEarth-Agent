@@ -86,10 +86,34 @@ def run_model(model, parameters=None, _owner=None, _switches=None, _session=None
     if _session is not None and _session.get("research_required") and not _via_script and research.allow_model(_session):
         plan_problem = research.planned_run_problem(_session, model, spec)
         if plan_problem:
+            attempts = int(_session.get("unplanned_run_attempts", 0)) + 1
+            _session["unplanned_run_attempts"] = attempts
+            # A refusal is not a search oracle. The first refusal explains the approved
+            # run ids; later direct calls terminate immediately instead of consuming a
+            # turn probing alternatives.
+            if _session.get("unplanned_run_blocked"):
+                return _fail(
+                    "Direct run_model is disabled after an unplanned configuration was refused. "
+                    "Stop retrying and use run_planned_models with the approved run_id values.",
+                    {
+                        "model": model,
+                        "rejected_parameters": parameters or {},
+                        "problems": [plan_problem],
+                        "unplanned_run_attempts": attempts,
+                        "next": "run_planned_models",
+                    },
+                )
+            _session["unplanned_run_blocked"] = True
             return {
                 "status": "needs_input",
                 "summary": plan_problem,
-                "data": {"model": model, "rejected_parameters": parameters or {}, "problems": [plan_problem]},
+                "data": {
+                    "model": model,
+                    "rejected_parameters": parameters or {},
+                    "problems": [plan_problem],
+                    "unplanned_run_attempts": attempts,
+                    "next": "run_planned_models",
+                },
                 "citations": [], "qc": None, "ui": None, "error": plan_problem,
             }
 
@@ -247,6 +271,107 @@ def run_planned_model(run_id, _owner=None, _switches=None, _session=None):
         result["data"]["reused"] = False
         result["summary"] = "Approved run %s: %s" % (run_id, result["summary"])
     return result
+
+
+def run_planned_models(run_ids=None, _owner=None, _switches=None, _session=None):
+    """Execute a batch of approved plan runs without weakening the per-run gate.
+
+    The batch is only a transport reduction: every id still resolves against the approved
+    plan, uses the same validation/QC/result store, and can reuse a prior successful handle.
+    A failed item is returned with the other item results instead of forcing the host to
+    rediscover which run was completed.
+    """
+    if not isinstance(run_ids, (list, tuple)) or not run_ids:
+        return _fail("run_planned_models requires a non-empty run_ids array.")
+    normalized = [str(run_id or "").strip() for run_id in run_ids]
+    if any(not run_id for run_id in normalized):
+        return _fail("run_planned_models requires non-empty run ids.")
+    if len(normalized) != len(set(normalized)):
+        return _fail("run_planned_models received duplicate run ids; each planned run is executed once.")
+    if len(normalized) > 64:
+        return _fail("run_planned_models accepts at most 64 run ids per batch.")
+
+    def remember_success(run_id, data):
+        """Bookkeep nested planned results that bypass the host's per-tool recorder."""
+        if _session is None or not isinstance(data, dict) or not data.get("handle"):
+            return
+        record = {
+            "model": data.get("model"),
+            "spec": dict(data.get("spec") or {}),
+            "handle": data.get("handle"),
+            "planned_run_id": run_id,
+        }
+        successful = _session.setdefault("successful_runs", [])
+        if not any(
+            item.get("model") == record["model"]
+            and item.get("spec") == record["spec"]
+            and item.get("handle") == record["handle"]
+            and item.get("planned_run_id") == record["planned_run_id"]
+            for item in successful
+        ):
+            successful.append(record)
+        version = data.get("version") or "unknown"
+        _session.setdefault("models_run", set()).add(
+            "%s@%s" % (data.get("model"), version)
+        )
+        handles = _session.setdefault("handles", [])
+        handles[:] = [item for item in handles if item.get("handle") != data.get("handle")]
+        spec = data.get("spec") or {}
+        axis = data.get("axis") or {}
+        line = "%s@%s, %s point(s)%s" % (
+            data.get("model"), version, data.get("n_points", 0),
+            " over %s" % axis.get("name") if axis.get("name") else "",
+        )
+        handles.append({"handle": data.get("handle"), "line": line})
+        while len(handles) > 40:
+            handles.pop(0)
+
+    items = []
+    failed = []
+    for run_id in normalized:
+        result = run_planned_model(
+            run_id,
+            _owner=_owner,
+            _switches=_switches,
+            _session=_session,
+        )
+        item = {
+            "run_id": run_id,
+            "status": result.get("status"),
+            "summary": result.get("summary"),
+            "data": result.get("data") or {},
+        }
+        if result.get("status") == "success":
+            remember_success(run_id, item["data"])
+        items.append(item)
+        if result.get("status") != "success":
+            failed.append(run_id)
+    if failed:
+        return {
+            "status": "needs_input",
+            "summary": "Batch completed with %d failed planned run(s): %s. Successful runs remain stored."
+            % (len(failed), ", ".join(failed)),
+            "data": {
+                "runs": items,
+                "failed_run_ids": failed,
+                "successful_run_ids": [item["run_id"] for item in items if item["status"] == "success"],
+            },
+            "citations": [],
+            "qc": None,
+            "ui": None,
+            "error": "one or more planned runs failed",
+        }
+    return _ok(
+        "Executed %d approved planned run(s) in one batch; results are stored under their handles."
+        % len(items),
+        {
+            "runs": items,
+            "run_ids": normalized,
+            "handles": [
+                item["data"].get("handle") for item in items if item["data"].get("handle")
+            ],
+        },
+    )
 
 
 def read_reference_dataset(dataset=None, filters=None, _owner=None):

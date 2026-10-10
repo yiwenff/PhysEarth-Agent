@@ -129,10 +129,10 @@ if [ -z "$ENGINE_PYTHON" ]; then
   echo "         The skill, output style and theme still work; every engine tool will fail." >&2
   echo "         Install the environment (uv sync --extra dev), then re-run." >&2
 else
-  echo "==> claude mcp add physearth -- $ENGINE_PYTHON $ROOT/integrations/physearth/mcp_server.py --stdio"
+  echo "==> claude mcp add physearth -- $ENGINE_PYTHON $ROOT/integrations/physearth/mcp_server.py --stdio --profile direct"
   claude mcp remove physearth --scope "$SCOPE" >/dev/null 2>&1 || true
   claude mcp add physearth --scope "$SCOPE" -- \
-    "$ENGINE_PYTHON" "$ROOT/integrations/physearth/mcp_server.py" --stdio 2>&1 | head -5
+    "$ENGINE_PYTHON" "$ROOT/integrations/physearth/mcp_server.py" --stdio --profile direct 2>&1 | head -5
 fi
 
 # ── The two settings a plugin cannot set ─────────────────────────────────────────────────────

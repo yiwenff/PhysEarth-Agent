@@ -51,6 +51,7 @@ from physearth.tools.runs import (
     read_reference_dataset,
     run_model,
     run_planned_model,
+    run_planned_models,
 )
 from physearth.tools.specs import SPECS
 
@@ -71,6 +72,7 @@ DISPATCH = {
     "run_model": run_model,
     "run_analysis_script": run_analysis_script,
     "run_planned_model": run_planned_model,
+    "run_planned_models": run_planned_models,
     "plot": plot,
     "plot_planned_chart": plot_planned_chart,
     "discover_literature": discover_literature,
@@ -84,10 +86,10 @@ DISPATCH = {
 # from whatever the model sent before dispatch, so none of these can be forged from a
 # tool call.
 OWNER_SCOPED = (
-    "run_model", "run_planned_model", "run_raw_smrt", "read_reference_dataset", "plot",
+    "run_model", "run_planned_model", "run_planned_models", "run_raw_smrt", "read_reference_dataset", "plot",
     "plot_planned_chart", "run_analysis_script",
 )
-SWITCH_AWARE = ("run_model", "run_planned_model", "list_models", "read_literature", "run_analysis_script")
+SWITCH_AWARE = ("run_model", "run_planned_model", "run_planned_models", "list_models", "read_literature", "run_analysis_script")
 # Offered to the engine's own agent only. A host such as Claude Code or Codex already runs Python
 # in the user's own environment, so the plugin does not expose a second, narrower way to do it.
 HOST_RUNS_PYTHON = ("run_analysis_script",)
@@ -97,7 +99,7 @@ SESSION_SCOPED = (
     "read_paper_figure", "inspect_paper_figure", "register_model_guideline",
     "inspect_github_model_repo", "register_github_model_repo", "discover_literature", "ingest_paper"
 )
-SESSION_SCOPED = SESSION_SCOPED + ("research_plan", "run_model", "run_planned_model", "plot_planned_chart")
+SESSION_SCOPED = SESSION_SCOPED + ("research_plan", "run_model", "run_planned_model", "run_planned_models", "plot_planned_chart")
 SESSION_SCOPED = SESSION_SCOPED + ("plot", "run_analysis_script")
 SESSION_SCOPED = SESSION_SCOPED + ("read_raw_paper", "run_raw_smrt", "read_paper_digest")
 CORPUS_TOOLS = (

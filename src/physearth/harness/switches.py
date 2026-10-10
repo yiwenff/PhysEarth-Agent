@@ -1,4 +1,4 @@
-"""Ablation switches.
+"""Ablation and host-policy switches.
 
 An ablation has to be reproducible by anyone who checks this repository out, so it
 cannot be a code edit. It also must not be reachable by the model: these values arrive
@@ -16,6 +16,44 @@ figures      the figure layer of the corpus: the tools that open and inspect a s
              is text only, which is what a reader has without the plates -- a caption
              says what a figure is about, the figure says what is on it.
 """
+
+PROFILE_DIRECT = "direct"
+PROFILE_REGULATED = "regulated"
+PROFILES = (PROFILE_DIRECT, PROFILE_REGULATED)
+DEFAULT_PROFILE = PROFILE_REGULATED
+
+    # ``direct`` is the default for external MCP/plugin hosts.  It keeps the engine's
+    # validation, result handles, evidence bookkeeping and report lint, while leaving
+    # user-facing permission and the research-plan review to the host.  The research
+    # workflow is deliberately still required: a plugin host must not turn a physical
+    # question into an unplanned model call.  ``regulated`` additionally preserves the
+    # original nested research-agent loop, internal run approval and hard report gate.
+PROFILE_POLICIES = {
+    PROFILE_DIRECT: {
+        "research_workflow": True,
+        "internal_approval": False,
+        "nested_agent": False,
+        "report_gate": "hard",
+        "sticky_session": True,
+    },
+    PROFILE_REGULATED: {
+        "research_workflow": True,
+        "internal_approval": True,
+        "nested_agent": True,
+        "report_gate": "hard",
+        "sticky_session": False,
+    },
+}
+
+
+def resolve_profile(profile=None):
+    """Return a copy of the named host policy, rejecting unknown profiles."""
+    selected = DEFAULT_PROFILE if profile is None else profile
+    if selected not in PROFILES:
+        raise ValueError(
+            f"unknown profile {selected!r}; choose one of {', '.join(PROFILES)}"
+        )
+    return {"name": selected, **PROFILE_POLICIES[selected]}
 
 PAPER_ACCESS = ("structured_figures", "structured_text", "raw_pdf")
 EXECUTION_ACCESS = ("harnessed_smrt", "raw_smrt")

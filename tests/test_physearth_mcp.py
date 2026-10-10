@@ -58,7 +58,30 @@ def test_no_tool_argument_offers_a_way_past_the_approval_gate():
     assert decide["inputSchema"]["properties"]["decision"]["enum"] == ["approve", "reject"]
 
 
-def test_a_real_sweep_runs_through_mcp_after_the_verdict_and_registers_in_the_session():
+def test_direct_profile_keeps_research_plan_but_removes_nested_agent_and_run_approval(monkeypatch):
+    monkeypatch.setitem(service._OPERATOR, "profile", "direct")
+    created = service.new_session(model="smrt")
+    sticky, problem = service.resolve_session()
+    names = {item["name"] for item in _call("tools/list")["tools"]}
+
+    assert problem is None
+    assert sticky["id"] == created["session_id"]
+    assert created["profile"] == "direct"
+    assert sticky["research_required"] is True
+    assert {"physearth_ask", "physearth_decide"}.isdisjoint(names)
+    assert {"research_plan", "run_planned_model", "plot_planned_chart", "physearth_plan_status", "physearth_review"} <= names
+    assert {"physearth_health", "physearth_evidence", "physearth_verify_report"} <= names
+    assert service.ask("nested question", session_id=created["session_id"])["error"] == "nested_agent_disabled"
+
+
+def test_regulated_profile_keeps_the_nested_agent_surface(monkeypatch):
+    monkeypatch.setitem(service._OPERATOR, "profile", "regulated")
+    names = {item["name"] for item in _call("tools/list")["tools"]}
+    assert {"physearth_ask", "physearth_decide", "physearth_plan_status", "physearth_review"} <= names
+
+
+def test_a_real_sweep_runs_through_regulated_mcp_after_the_verdict_and_registers_in_the_session(monkeypatch):
+    monkeypatch.setitem(service._OPERATOR, "profile", "regulated")
     session = _call(
         "tools/call",
         {"name": "physearth_session_new", "arguments": {"model": "smrt", "approve_runs": True}},
@@ -102,6 +125,7 @@ def test_a_real_sweep_runs_through_mcp_after_the_verdict_and_registers_in_the_se
 
 
 def test_a_refused_call_is_reported_as_an_error_the_model_can_read(monkeypatch):
+    monkeypatch.setitem(service._OPERATOR, "profile", "regulated")
     monkeypatch.setitem(service._OPERATOR, "approval", "always")
     session = _read_json(
         _call("tools/call", {"name": "physearth_session_new", "arguments": {"model": "smrt"}})
