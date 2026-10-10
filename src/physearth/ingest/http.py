@@ -43,9 +43,18 @@ TIMEOUT_S = 20.0
 MAX_BYTES = 6_000_000
 USER_AGENT = "physearth-agent/0.1 (+https://github.com/zjuiEMLab/PhysEarth-Agent)"
 
+# Operator-only benchmark policy. This blocks the known SMRT v1 reproduction
+# repository without blocking the separate SMRT code repository or publisher pages.
+_TEST_BLOCKED_REPOSITORY = ("smrt-model", "smrt_v1_paper")
+_TEST_SOURCE_BLOCKING = False
+
 
 class Offline(Exception):
     """Raised when the online layer is switched off. Not a fault, a configuration."""
+
+
+class BlockedSource(Exception):
+    """Raised when the operator's testing source policy denies a URL."""
 
 
 class Upstream(Exception):
@@ -55,6 +64,43 @@ class Upstream(Exception):
         super().__init__("%s: %s" % (host, detail))
         self.host = host
         self.detail = detail
+
+
+def configure_test_source_blocking(enabled):
+    """Enable or disable the operator-only testing source block for this process."""
+    global _TEST_SOURCE_BLOCKING
+    _TEST_SOURCE_BLOCKING = bool(enabled)
+
+
+def testing_source_blocking():
+    """Whether the MCP-side testing source block is active."""
+    return bool(_TEST_SOURCE_BLOCKING)
+
+
+def source_is_blocked(url):
+    """Return whether *url* belongs to the exact blocked SMRT paper repository.
+
+    Matching covers the public repository URL and the API/raw URLs that the GitHub
+    integration derives from it. It does not block unrelated GitHub repositories.
+    """
+    if not _TEST_SOURCE_BLOCKING:
+        return False
+    parsed = urllib.parse.urlparse(str(url or "").strip())
+    host = (parsed.hostname or "").lower()
+    parts = [part for part in parsed.path.split("/") if part]
+    if host in ("github.com", "raw.githubusercontent.com") and len(parts) >= 2:
+        candidate = (parts[0], parts[1].removesuffix(".git"))
+    elif host == "api.github.com" and len(parts) >= 3 and parts[0] == "repos":
+        candidate = (parts[1], parts[2].removesuffix(".git"))
+    else:
+        return False
+    return candidate == _TEST_BLOCKED_REPOSITORY
+
+
+def ensure_source_allowed(url):
+    """Reject a testing-blocked source without fetching its contents."""
+    if source_is_blocked(url):
+        raise BlockedSource("source blocked by the testing source policy")
 
 
 def online():
@@ -73,6 +119,7 @@ def _check(url):
 def get_bytes(url, timeout=TIMEOUT_S, max_bytes=MAX_BYTES):
     if not online():
         raise Offline("PHYSEARTH_ONLINE is 0, so nothing is fetched")
+    ensure_source_allowed(url)
     host = _check(url)
     started = time.perf_counter()
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})

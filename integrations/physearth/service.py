@@ -25,31 +25,59 @@ import threading
 from physearth import agent, config, paths, prompt, registry, research, tools
 from physearth import session as session_state
 from physearth.corpus import knowledge, reference
-from physearth.harness import approval, gates
+from physearth.harness import approval, gates, switches as harness_switches
+from physearth.ingest import http
 
 _LOCK = threading.Lock()
 _SESSIONS: dict = {}
 _RUNNING: set = set()
+_DEFAULT_SESSION_ID = None
 
 APPROVAL_MODES = (approval.ASK, approval.ALWAYS)
 DECISIONS = ("approve", "reject")
-_OPERATOR = {"approval": approval.ASK}
+_OPERATOR = {
+    "approval": approval.ASK,
+    "profile": harness_switches.DEFAULT_PROFILE,
+    "testing": False,
+}
 _SWITCHES = "host_switches"
 
 
-def configure(approval_mode=None):
+def configure(approval_mode=None, profile=None, testing=None):
     """Fix the operator's settings for this process; called by whatever starts the server.
 
     `ask` (the default) pauses before every physical run until a person decides; `always`
     records that the operator approved runs in advance. Sessions read it when they are
-    created, so it is chosen before any host request arrives.
+    created, so it is chosen before any host request arrives.  The ``direct`` profile is
+    the host-facing default when an MCP server starts: the host owns permission, there is
+    one sticky session, and report verification is advisory. The direct host still has
+    to author and review a research plan before a physical run; it only delegates the
+    separate run-permission prompt and nested agent loop to the host. Host launchers
+    select it explicitly; ``regulated`` preserves the original nested research-agent
+    workflow for explicit callers.
     """
     if approval_mode is not None:
         if approval_mode not in APPROVAL_MODES:
             known = ", ".join(APPROVAL_MODES)
             raise ValueError(f"unknown approval mode {approval_mode!r}; choose one of {known}")
         _OPERATOR["approval"] = approval_mode
-    return dict(_OPERATOR)
+    if profile is not None:
+        _OPERATOR["profile"] = harness_switches.resolve_profile(profile)["name"]
+    if testing is not None:
+        _OPERATOR["testing"] = bool(testing)
+        http.configure_test_source_blocking(_OPERATOR["testing"])
+    # Keep the long-standing return shape for CLI callers; ``health`` and ``profile``
+    # expose the new policy fields without breaking scripts that only read approval.
+    return {"approval": _OPERATOR["approval"]}
+
+
+def profile():
+    """Return the active host policy as JSON-safe data."""
+    return harness_switches.resolve_profile(_OPERATOR["profile"])
+
+
+def _session_profile(session):
+    return harness_switches.resolve_profile(session.get("harness_profile") or _OPERATOR["profile"])
 
 
 def _jsonable(value):
@@ -69,13 +97,24 @@ def new_session(model=None):
     """Create one engine session and return the address a host keeps for later calls."""
     session = agent.new_session(model or agent.default_model())
     approval.set_mode(session, _OPERATOR["approval"])
-    session["research_required"] = False
+    # Direct MCP sessions are research sessions from their first tool call. The
+    # regulated agent starts with its legacy permission gate and turns on
+    # ``research_required`` when its planning tool enters the research workflow.
+    session["research_required"] = profile()["name"] == harness_switches.PROFILE_DIRECT
+    session["harness_profile"] = _OPERATOR["profile"]
+    session["host_agent"] = True
     with _LOCK:
         _SESSIONS[session["id"]] = session
+        global _DEFAULT_SESSION_ID
+        if profile()["sticky_session"]:
+            _DEFAULT_SESSION_ID = session["id"]
     return {
         "session_id": session["id"],
         "model": session.get("model"),
         "approval": approval.mode(session),
+        "profile": session["harness_profile"],
+        "report_gate": _session_profile(session)["report_gate"],
+        "testing": bool(_OPERATOR["testing"]),
     }
 
 
@@ -100,6 +139,13 @@ def resolve_session(session_id=None, model=None):
                 "session that produced them, so call new_session first." % session_id
             ),
         }
+    if profile()["sticky_session"]:
+        with _LOCK:
+            default_id = _DEFAULT_SESSION_ID
+        if default_id:
+            session = get_session(default_id)
+            if session is not None:
+                return session, None
     created = new_session(model=model)
     return get_session(created["session_id"]), None
 
@@ -111,8 +157,12 @@ def sessions():
 
 
 def drop_session(session_id):
+    global _DEFAULT_SESSION_ID
     with _LOCK:
-        return _SESSIONS.pop(session_id, None) is not None
+        removed = _SESSIONS.pop(session_id, None) is not None
+        if _DEFAULT_SESSION_ID == session_id:
+            _DEFAULT_SESSION_ID = None
+        return removed
 
 
 def _session_summary(session):
@@ -126,6 +176,7 @@ def _session_summary(session):
         "evidence": _evidence_counts(session),
         "research_phase": project.get("phase"),
         "plan_version": project.get("plan_version"),
+        "profile": _session_profile(session)["name"],
     }
 
 
@@ -158,6 +209,11 @@ def health():
         "knowledge": _knowledge_counts(),
         "credentials": bool(config.has_token()),
         "approval": _OPERATOR["approval"],
+        "profile": profile()["name"],
+        "internal_approval_enabled": profile()["internal_approval"],
+        "report_gate": profile()["report_gate"],
+        "testing": bool(_OPERATOR["testing"]),
+        "source_blocking": http.testing_source_blocking(),
         "online": str(config.get("PHYSEARTH_ONLINE")) != "0",
     }
 
@@ -334,6 +390,7 @@ def call(name, arguments=None, session_id=None, switches=None):
     session[_SWITCHES] = switches
     if (
         name == "run_model"
+        and _session_profile(session)["internal_approval"]
         and approval.required(session)
         and not session.get("research_required")
     ):
@@ -355,9 +412,88 @@ def _execute(session, name, arguments, switches):
         switches_in=switches,
         session=session,
     )
+    result = _auto_confirm_testing_capability(session, name, arguments, result, switches)
+    result = _auto_approve_testing_plan(session, name, arguments, result)
     session_state.bump(state, "tool_calls")
     agent._record_tool_result(name, result, state, [])
     return _jsonable(result)
+
+
+def _auto_confirm_testing_capability(session, name, arguments, result, switches):
+    """Confirm a capability review's documented partial-scope option in benchmark mode.
+
+    Some paper reproductions need an operation that is not a registered physical model, such
+    as an inverse solver. The normal workflow asks the person to choose a documented option.
+    In explicit testing mode, select the first available option (the engine's recommended
+    option) through the same capability tool, and preserve the decision in the returned data.
+    This does not execute the operation or skip any later plan, run, chart, or report gate.
+    """
+    if not _OPERATOR["testing"] or name != "research_capability_check":
+        return result
+    if not isinstance(result, dict) or result.get("status") != "needs_input":
+        return result
+    review = ((result.get("data") or {}).get("capability_review") or {})
+    if review.get("status") != "waiting_user":
+        return result
+    options = review.get("missing_operations") or []
+    if not options:
+        return result
+    confirmed = tools.call(
+        name,
+        {"action": "confirm_partial"},
+        owner=session["id"],
+        switches_in=switches,
+        session=session,
+    )
+    if not isinstance(confirmed, dict) or confirmed.get("status") != "success":
+        return result
+    enriched = dict(confirmed)
+    data = dict(confirmed.get("data") or {})
+    data["testing_auto_confirmed"] = True
+    data["auto_capability_choice"] = "recommended_available_option"
+    data["initial_capability_review"] = review
+    enriched["data"] = data
+    enriched["testing_auto_confirmed"] = True
+    enriched["summary"] = (
+        "%s Testing mode automatically selected the documented recommended available "
+        "capability option; the normal research-plan gate remains active."
+        % str(enriched.get("summary") or "Capability checkpoint complete.").rstrip(".")
+    )
+    return enriched
+
+
+def _auto_approve_testing_plan(session, name, arguments, result):
+    """Apply the normal review action automatically in explicit benchmark mode.
+
+    The engine intentionally returns a review-needed result after a valid proposal. For a
+    repeatable host comparison, ``--testing`` may supply the equivalent of the user's
+    ``satisfied_figures`` click. It is deliberately narrow: only proposal submissions at
+    ``plan_review`` qualify, and the existing review action must reach ``approved``. A
+    malformed proposal, a resource-gated proposal, or any other phase remains gated.
+    """
+    if not _OPERATOR["testing"] or name != "research_plan":
+        return result
+    action = str((arguments or {}).get("action") or "")
+    if action not in ("propose", "revise_plan"):
+        return result
+    project = session.get("research") or {}
+    if project.get("phase") != "plan_review":
+        return result
+    review = research.review_action(session, "satisfied_figures")
+    if (session.get("research") or {}).get("phase") != "approved":
+        return result
+    enriched = dict(result or {})
+    review_data = dict(review.get("data") or {}) if isinstance(review, dict) else {}
+    review_data["testing_auto_approved"] = True
+    review_data["auto_review_choice"] = "satisfied_figures"
+    enriched["data"] = review_data
+    enriched["testing_auto_approved"] = True
+    enriched["summary"] = (
+        "%s Testing mode automatically applied the existing satisfied_figures review "
+        "action; formal execution is now approved."
+        % str(enriched.get("summary") or "Research plan accepted.").rstrip(".")
+    )
+    return enriched
 
 
 def _no_credentials():
@@ -383,6 +519,16 @@ def ask(question, session_id=None, model=None, switches=None):
     missing credential is a refusal. A turn that reaches a run needing approval ends paused:
     the result says `awaiting_approval` and carries what the person is asked to approve.
     """
+    if not profile()["nested_agent"]:
+        return {
+            "status": "terminal_error",
+            "error": "nested_agent_disabled",
+            "summary": (
+                "The direct host profile does not run a second PhysEarth agent loop. "
+                "Use the exposed tools directly; select profile='regulated' only when "
+                "an internal research-agent loop is intentional."
+            ),
+        }
     refusal = _no_credentials()
     if refusal is not None:
         return refusal
@@ -453,6 +599,12 @@ def decide(session_id, decision):
     session = get_session(session_id)
     if session is None:
         return {"status": "terminal_error", "error": "unknown_session", "summary": session_id}
+    if not _session_profile(session)["internal_approval"]:
+        return {
+            "status": "terminal_error",
+            "error": "internal_approval_disabled",
+            "summary": "The direct host profile delegates permission to the host.",
+        }
     if decision not in DECISIONS:
         return {
             "status": "terminal_error",
@@ -479,7 +631,7 @@ def decide(session_id, decision):
     return _jsonable(approval.declined_result(taken["tool"], taken["arguments"]))
 
 
-def verify_report(session_id, text):
+def verify_report(session_id, text, mode=None):
     """Check an answer the host wrote against what this session actually read and ran.
 
     The checks are the engine's own final-answer gates: every marker must resolve to a
@@ -490,6 +642,20 @@ def verify_report(session_id, text):
     session = get_session(session_id)
     if session is None:
         return {"status": "terminal_error", "error": "unknown_session", "summary": session_id}
+    policy = _session_profile(session)
+    selected_mode = mode or policy["report_gate"]
+    if selected_mode not in ("lint", "hard"):
+        return {
+            "status": "terminal_error",
+            "error": "unknown_report_mode",
+            "summary": "mode must be 'lint' or 'hard'.",
+        }
+    if selected_mode == "hard" and not policy["internal_approval"]:
+        return {
+            "status": "terminal_error",
+            "error": "hard_report_gate_disabled",
+            "summary": "The direct host profile exposes report verification as advisory lint.",
+        }
     state = session_state.new_state(session)
     state["model_runs"] = session.get("model_runs", 0)
     checks = gates.final_checks(text, state)
@@ -498,6 +664,8 @@ def verify_report(session_id, text):
         "status": "success",
         "session_id": session["id"],
         "passed": not failed,
+        "mode": selected_mode,
+        "enforced": selected_mode == "hard",
         "summary": (
             f"All {len(checks)} checks passed."
             if not failed

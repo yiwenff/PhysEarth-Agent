@@ -35,7 +35,7 @@ def inspect_github_model_repo(url, ref="main", _session=None):
     try:
         proposal, files = github_models.inspect(url, ref)
         proposal = github_models.save_proposal(_session, proposal, files)
-    except (ValueError, LookupError, http.Upstream) as exc:
+    except (ValueError, LookupError, http.Upstream, http.BlockedSource) as exc:
         return _fail("GitHub repository inspection failed: %s" % exc)
     return _ok(
         "Inspected GitHub repository %s at %s. No remote code was executed; human approval is required before registration." % (url, ref),

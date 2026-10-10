@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from integrations.physearth import service
+from physearth.harness import switches as harness_switches
 
 REFUSED_STATUS = 422
 AWAITING_STATUS = 202
@@ -139,7 +140,11 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/decide":
             return self._send(service.decide(body.get("session_id"), body.get("decision")))
         if path == "/verify":
-            return self._send(service.verify_report(body.get("session_id"), body.get("text", "")))
+            return self._send(
+                service.verify_report(
+                    body.get("session_id"), body.get("text", ""), mode=body.get("mode")
+                )
+            )
         if path == "/evidence":
             return self._send(service.evidence(body.get("session_id")))
         if path == "/plan":
@@ -172,8 +177,13 @@ def main(argv=None):
         choices=service.APPROVAL_MODES,
         default=os.environ.get("PHYSEARTH_APPROVAL") or "ask",
     )
+    parser.add_argument(
+        "--profile",
+        choices=harness_switches.PROFILES,
+        default=os.environ.get("PHYSEARTH_PROFILE") or "direct",
+    )
     args = parser.parse_args(argv)
-    service.configure(approval_mode=args.approval)
+    service.configure(approval_mode=args.approval, profile=args.profile)
     server = serve(args.host, args.port, args.allow_remote)
     print("physearth bridge on http://%s:%d" % server.server_address[:2], flush=True)
     try:

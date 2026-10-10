@@ -32,7 +32,7 @@ The honest arrangement is therefore two steps, and only the second is machine-sp
 ```bash
 codex plugin marketplace add /path/to/PhysEarth-Agent
 codex plugin add physearth@physearth-agent
-codex mcp add physearth -- "$PWD/.venv/bin/python" "$PWD/integrations/physearth/mcp_server.py" --stdio
+codex mcp add physearth -- "$PWD/.venv/bin/python" "$PWD/integrations/physearth/mcp_server.py" --stdio --profile direct
 ```
 
 That third command is the same one `integrations/codex/README.md` gives, and it is the one that has to

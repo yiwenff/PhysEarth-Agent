@@ -55,6 +55,7 @@ def _tree(owner, repo, ref):
 
 def inspect(url, ref="main"):
     owner, repo = _repo(url)
+    http.ensure_source_allowed(url)
     ref = str(ref or "main").strip()
     if not re.fullmatch(r"[A-Za-z0-9_.\-/]+", ref):
         raise ValueError("invalid GitHub ref")
@@ -215,6 +216,13 @@ def register(session, proposal_id, approval_token=""):
         return {"status": "terminal_error", "summary": "Unknown GitHub registration proposal %r." % proposal_id}
     if not proposal.get("safe_to_register"):
         return {"status": "terminal_error", "summary": "The GitHub proposal has validation problems and cannot be registered.", "data": proposal}
+    if http.source_is_blocked(proposal.get("repository")):
+        return {
+            "status": "terminal_error",
+            "summary": "The GitHub repository is blocked by the testing source policy.",
+            "data": {"proposal_id": proposal_id},
+            "error": "source_blocked",
+        }
     expected = (session.get("github_approval_tokens") or {}).get(str(proposal_id))
     if not approval_token or approval_token != expected:
         return {

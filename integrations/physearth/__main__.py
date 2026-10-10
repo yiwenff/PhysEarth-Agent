@@ -12,6 +12,7 @@ import os
 import sys
 
 from integrations.physearth import bridge, mcp_server, service
+from physearth.harness import switches as harness_switches
 
 
 def _emit(payload):
@@ -24,6 +25,28 @@ def _approval(parser):
         choices=service.APPROVAL_MODES,
         default=os.environ.get("PHYSEARTH_APPROVAL") or "ask",
         help="operator setting: ask pauses before every physical run, always approves in advance",
+    )
+
+
+def _profile(parser, default):
+    parser.add_argument(
+        "--profile",
+        choices=harness_switches.PROFILES,
+        default=os.environ.get("PHYSEARTH_PROFILE") or default,
+        help="host policy: direct delegates permission to the host; regulated keeps the nested research loop",
+    )
+
+
+def _testing(parser):
+    parser.add_argument(
+        "--testing",
+        action="store_true",
+        default=os.environ.get("PHYSEARTH_TESTING") == "1",
+        help=(
+            "benchmark mode: automatically apply the existing satisfied_figures review "
+            "action after a valid research plan and block the SMRT v1 paper repository "
+            "at the MCP HTTP boundary"
+        ),
     )
 
 
@@ -44,29 +67,40 @@ def main(argv=None):
         ),
     )
     prompt_cmd.add_argument("--list", action="store_true", help="print the scopes and their sizes")
-    _approval(sub.add_parser("serve", help="serve MCP on stdio"))
+    serve = sub.add_parser("serve", help="serve MCP on stdio")
+    _approval(serve)
+    _profile(serve, "direct")
+    _testing(serve)
 
     http = sub.add_parser("serve-http", help="serve the loopback HTTP bridge")
     http.add_argument("--host", default="127.0.0.1")
     http.add_argument("--port", type=int, default=8799)
     http.add_argument("--allow-remote", action="store_true")
     _approval(http)
+    _profile(http, "direct")
+    _testing(http)
 
     call = sub.add_parser("call", help="run one declared tool")
     call.add_argument("name")
     call.add_argument("--arguments", default="{}", help="JSON object")
     call.add_argument("--session-id", default=None)
     _approval(call)
+    _profile(call, "regulated")
 
     ask = sub.add_parser("ask", help="run one agent turn")
     ask.add_argument("question")
     ask.add_argument("--session-id", default=None)
     ask.add_argument("--model", default=None)
     _approval(ask)
+    _profile(ask, "regulated")
 
     args = parser.parse_args(argv)
     if getattr(args, "approval", None):
-        service.configure(approval_mode=args.approval)
+        service.configure(
+            approval_mode=args.approval,
+            profile=getattr(args, "profile", None),
+            testing=getattr(args, "testing", None),
+        )
 
     if args.command == "health":
         _emit(service.health())
@@ -98,9 +132,15 @@ def main(argv=None):
         # `argv=[]`, not `argv=None`: this subcommand has already consumed the word `serve`, and
         # leaving it in `sys.argv` made the server warn about "unrecognised argument(s): serve"
         # on every launch by a host that spells the invocation `-m integrations.physearth serve`.
-        mcp_server.main(["--approval", args.approval])
+        argv = ["--approval", args.approval, "--profile", args.profile]
+        if args.testing:
+            argv.append("--testing")
+        mcp_server.main(argv)
     elif args.command == "serve-http":
-        argv = ["--host", args.host, "--port", str(args.port), "--approval", args.approval]
+        argv = [
+            "--host", args.host, "--port", str(args.port), "--approval", args.approval,
+            "--profile", args.profile,
+        ]
         if args.allow_remote:
             argv.append("--allow-remote")
         bridge.main(argv)

@@ -19,7 +19,7 @@ For Codex, four artifacts make that up, and only the first needs installing:
 
 | Artifact | Where | Why |
 |---|---|---|
-| MCP server | `integrations/physearth/mcp_server.py` | the capability: 28 tools, resources, prompts |
+| MCP server | `integrations/physearth/mcp_server.py` | the capability: up to 28 tools, resources, prompts |
 | Skill | `.agents/skills/physearth/` | the procedure: which tool for which question, what a valid run looks like, which refusals are results. Discovered from the repository, so nothing to install |
 | Config | `integrations/codex/config.snippet.toml` | the file form of the registration |
 | Guide | `integrations/codex/README.md` | the two commands, the checks, and the honest limits |
@@ -30,8 +30,8 @@ For Codex, four artifacts make that up, and only the first needs installing:
 |---|---|
 | `physearth_health` | registered models, runnable models, declared tools, bundled evidence, credentials |
 | `physearth_session_new` | open a session; result handles resolve only inside it |
-| `physearth_ask` | one agent turn: plan → run registered models → answer with citations |
-| `physearth_decide` | the person's verdict, `approve` or `reject`, on a run awaiting approval |
+| `physearth_ask` | regulated-only nested agent turn: plan → run → answer with citations |
+| `physearth_decide` | regulated-only person's verdict on a run awaiting internal approval |
 | `physearth_evidence` | what a session actually read, ran and drew |
 | `physearth_verify_report` | check an answer the host wrote against the session's evidence |
 | `physearth_plan_status` | the research plan and the review action a human should take |
@@ -39,8 +39,8 @@ For Codex, four artifacts make that up, and only the first needs installing:
 | `physearth_prompt_stack` | the L0–L2 prompt stack plus the generated registry context |
 
 Plus **every declared engine tool** (`list_models`, `run_model`, `run_planned_model`,
-`read_literature`, `research_plan`, `plot`, …), each carrying the validation, approval gate
-and quality control the interactive product applies.
+`read_literature`, `research_plan`, `plot`, …), each carrying the validation, quality control,
+result handles and evidence bookkeeping the interactive product applies.
 
 Resources: `physearth://prompt-stack`, `physearth://models`, `physearth://knowledge`, `physearth://tools`,
 and `physearth://paper/<slug>/<section>` for every bundled paper section — the same
@@ -49,20 +49,32 @@ and `physearth://paper/<slug>/<section>` for every bundled paper section — the
 Prompts: `physearth-reproduce-figure`, `physearth-sweep-parameter`, `physearth-compare-models`. Each
 carries the evidence rules with the task, so the host's own reasoning is held to them.
 
-## Approval
+## Profiles and permission
 
-Whether a physical run waits for a person is the **operator's** choice, made when the server
-starts, and nothing a host's model sends can change it:
+Plugin launchers pass the shared `direct` profile explicitly. It keeps Python's validation,
+quality control, result handles, provenance and advisory report lint, while the host owns the
+user-facing permission and the one sticky session. It does not publish the nested agent or
+internal review tools.
 
 ```bash
-.venv/bin/python integrations/physearth/mcp_server.py --stdio                     # ask (default)
-.venv/bin/python integrations/physearth/mcp_server.py --stdio --approval always   # pre-approved
+.venv/bin/python integrations/physearth/mcp_server.py --stdio --profile direct
 ```
 
-`PHYSEARTH_APPROVAL=always` does the same for a host that sets environment variables
-rather than arguments; the HTTP bridge takes the same flag. `physearth_health` reports the setting.
+The explicit `regulated` profile preserves the original nested research-agent workflow, operator
+approval (`--approval ask|always`), formal plan/review tools and hard report enforcement:
 
-With `ask`, a `run_model` call or a `physearth_ask` turn that reaches a run stops with
+```bash
+.venv/bin/python integrations/physearth/mcp_server.py --stdio --profile regulated --approval ask
+```
+
+`physearth_health` reports the active profile and whether internal approval is enabled.
+
+For benchmark runs, add `--testing`. In addition to automatic plan approval, testing mode
+blocks the MCP's own HTTP/GitHub access to the exact `smrt-model/smrt_v1_paper` repository
+and its derived API/raw URLs. This policy does not control a host's separate browser or web
+search capability, so a blind benchmark must disable those host capabilities separately.
+
+In regulated mode with `ask`, a `run_model` call or a `physearth_ask` turn that reaches a run stops with
 `status: awaiting_approval` and a `pending` description, before anything is computed. If the
 MCP client declares the `elicitation` capability, the server asks the person through the
 client's own prompt and continues on their answer; a cancelled prompt leaves the request
@@ -86,7 +98,7 @@ integrations/codex/doctor.sh                                   # checks the inte
 Register it with Codex (`codex.toml.example` has the same thing in file form):
 
 ```bash
-codex mcp add physearth -- "$PWD/.venv/bin/python" "$PWD/integrations/physearth/mcp_server.py" --stdio
+codex mcp add physearth -- "$PWD/.venv/bin/python" "$PWD/integrations/physearth/mcp_server.py" --stdio --profile direct
 codex mcp list
 ```
 
@@ -135,9 +147,10 @@ with a scripted model, elicitation, report verification, resources and prompts.
 - **A refusal is a result.** A worked-out validation, a missing credential or an unknown
   session comes back as a structured error the model can read and route around. Nothing is
   estimated locally to fill a gap.
-- **The approval gate is the operator's.** It is set when the server starts, a direct
-  `run_model` call is held under the same condition as a run inside the agent loop, and the
-  only verdicts a host can pass are `approve` and `reject` for one pending run.
+- **Permission has one owner per profile.** Both profiles require a reviewed research plan before
+  model execution. `direct` leaves the separate run-permission prompt in the host's charge and
+  exposes plan status/review; `regulated` additionally keeps the operator-owned internal approval
+  gate and nested agent loop, with only `approve` and `reject` accepted for one pending run.
 - **A host-written answer is checked like the agent's own.** `physearth_verify_report` runs the
   engine's final-answer gates against what the session read and ran.
 - **Numbers come from runs.** `run_model` returns a handle and a bounded preview; the
@@ -148,8 +161,8 @@ with a scripted model, elicitation, report verification, resources and prompts.
 
 - Codex cannot change this project's UI; the Studio remains the place to see figures, the run
   trace and the evidence panel.
-- `physearth_ask` needs inference credentials (`PHYSEARTH_LLM_API_KEY` or `MODELSCOPE_TOKEN`).
-  Without them it refuses in one line instead of inventing an answer; the tool-only and
-  knowledge-only paths work offline.
+- `physearth_ask` is regulated-only and needs inference credentials (`PHYSEARTH_LLM_API_KEY` or
+  `MODELSCOPE_TOKEN`). Without them it refuses in one line instead of inventing an answer; the
+  direct tool-only and knowledge-only paths work offline.
 - Sessions live in the server process: restarting it invalidates handles, and
   `physearth_evidence` says so rather than pretending.

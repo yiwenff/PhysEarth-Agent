@@ -2,15 +2,17 @@
 
 This repository is the physics and evidence engine for Geo-AI questions: registered
 physical models (SMRT, tau-omega, water cloud, PROSAIL, pyet, pywatershed), a bundled
-CC-BY literature corpus and reference measurements, and a research workflow with an
-approval gate. A `physearth` MCP server exposes it.
+CC-BY literature corpus and reference measurements, and validation/QC/evidence services.
+A `physearth` MCP server exposes it. Plugin hosts use the shared `direct` profile by default;
+the explicit `regulated` profile preserves the nested research-agent workflow.
 
 ## Use the server, not your memory
 
 - `physearth_health` first, once per session: it says which models actually run here.
 - Any number that carries a unit (K, dB, m³/m³) comes from `run_model`, never from an
   estimate. It returns a handle plus a bounded preview; the arrays stay in the session.
-- `physearth_ask` for a whole question: it plans, runs registered models and cites what it read.
+- Drive the engine tools directly for a whole question. Do not call `physearth_ask` from a host
+  that is already the user-facing agent; that nested loop is available only in `regulated` mode.
 - `physearth_evidence` before you assert anything: it lists the sections read, the models run,
   the datasets queried and the figures produced. Cite that material, not your recollection.
 - A run needs a session (`physearth_session_new`); handles resolve only inside the session that
@@ -22,9 +24,10 @@ approval gate. A `physearth` MCP server exposes it.
   and outputs against declared bounds after it. If a call is refused (snow density above
   solid ice, a microstructure no theory derives, a liquid-water dielectric model asked
   about frozen ground), report the refusal and its reason instead of retrying variations.
-- A human approves a physical run. Whether the server asks is the operator's setting, not a
-  tool argument. A result with `status: awaiting_approval` means nothing has run yet: show
-  the user the pending run and pass their answer to `physearth_decide`. Never decide it yourself.
+- In `direct` mode the host owns user-facing permission; Python still validates the call, records
+  provenance and keeps result handles in one session. In `regulated` mode a human approval gate
+  can return `status: awaiting_approval`; show the pending run and pass the person's answer to
+  `physearth_decide`. Never decide it yourself.
 - Check an answer you wrote with `physearth_verify_report` before giving it to the user.
 - Cite `[paper#section]` only for a section actually read, `[model:name@version]` only for a
   run actually performed, `[data:slug]` only for a dataset actually queried. An
