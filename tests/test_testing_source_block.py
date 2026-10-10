@@ -15,6 +15,10 @@ def test_testing_blocks_only_the_smrt_v1_paper_repository_and_derived_urls():
         assert http.source_is_blocked(
             "https://raw.githubusercontent.com/smrt-model/smrt_v1_paper/master/fig07.ipynb"
         )
+        assert http.source_is_blocked("https://github.com/smrt-model/smrt1paper/")
+        assert http.source_is_blocked(
+            "https://raw.githubusercontent.com/smrt-model/smrt1paper/master/fig07.ipynb"
+        )
         assert not http.source_is_blocked("https://github.com/smrt-model/smrt/")
         assert not http.source_is_blocked("https://gmd.copernicus.org/articles/11/2763/2018/")
         assert not http.source_is_blocked("https://github.com/another-owner/smrt_v1_paper/")

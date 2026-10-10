@@ -44,8 +44,12 @@ MAX_BYTES = 6_000_000
 USER_AGENT = "physearth-agent/0.1 (+https://github.com/zjuiEMLab/PhysEarth-Agent)"
 
 # Operator-only benchmark policy. This blocks the known SMRT v1 reproduction
-# repository without blocking the separate SMRT code repository or publisher pages.
-_TEST_BLOCKED_REPOSITORY = ("smrt-model", "smrt_v1_paper")
+# repository and the alias observed in earlier traces, without blocking the
+# separate SMRT code repository or publisher pages.
+_TEST_BLOCKED_REPOSITORIES = {
+    ("smrt-model", "smrt_v1_paper"),
+    ("smrt-model", "smrt1paper"),
+}
 _TEST_SOURCE_BLOCKING = False
 
 
@@ -78,7 +82,7 @@ def testing_source_blocking():
 
 
 def source_is_blocked(url):
-    """Return whether *url* belongs to the exact blocked SMRT paper repository.
+    """Return whether *url* belongs to a blocked SMRT paper repository.
 
     Matching covers the public repository URL and the API/raw URLs that the GitHub
     integration derives from it. It does not block unrelated GitHub repositories.
@@ -94,7 +98,7 @@ def source_is_blocked(url):
         candidate = (parts[1], parts[2].removesuffix(".git"))
     else:
         return False
-    return candidate == _TEST_BLOCKED_REPOSITORY
+    return candidate in _TEST_BLOCKED_REPOSITORIES
 
 
 def ensure_source_allowed(url):
