@@ -63,6 +63,7 @@ export const Config = z.object({
   autoStartBridge: z.boolean().default(DEFAULTS.autoStartBridge),
   pythonCmd: z.string().default(DEFAULTS.pythonCmd),
   projectRoot: z.string().default(DEFAULTS.projectRoot),
+  policyProfile: z.string().default(DEFAULTS.policyProfile),
   approveRuns: z.boolean().default(DEFAULTS.approveRuns),
   accent: z.string().default(DEFAULTS.accent),
   colorScheme: z.string().default(DEFAULTS.colorScheme),
@@ -102,8 +103,9 @@ ${PROMPT_HEADING}
 
 Physics tools are available under the \`mcp__physearth__\` namespace. They run the physical models
 this checkout has registered — call \`list_models\` for the current list and each model's
-declared parameters rather than assuming one — with declared physical ranges, a human approval
-gate and post-run quality control.
+declared parameters rather than assuming one — with declared physical ranges, host-owned
+permission and post-run quality control. The shared service also offers an explicit regulated
+profile when a nested research-agent loop is intentional.
 
 - Any number that carries a unit (K, dB, m3/m3) comes from a \`run_model\` result, never from
   an estimate. A run returns a handle; the arrays stay in the session that produced them.

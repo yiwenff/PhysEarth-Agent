@@ -15,7 +15,7 @@ half), which is exactly how the two working external plugins on this machine (`d
 | Piece | Where | What a user notices |
 |---|---|---|
 | Switch + settings | 设置 → 插件 → **PhysEarth Geo-AI** | one click enables/disables the whole surface |
-| Tools | `mcp__physearth__*` via the harness' own MCP client row | `run_model`, `research_plan`, `read_literature`, … with validation, approval gate and QC behind them |
+| Tools | `mcp__physearth__*` via the harness' own MCP client row | `run_model`, `research_plan`, `read_literature`, … with validation, QC, handles and evidence behind them; DSH owns permission in the default direct profile |
 | Prompt rules | host half, `ctx.systemPrompt.section()` | the project's own citation, evidence-tier and workflow rules, injected whole; numbers come from runs, citations resolve only against evidence the session gathered |
 | Restyle | 60 host semantic tokens + this plugin's own stylesheet | dark Geo-AI surface, ice/amber/deep-blue accent, Fira stack for numbers, tabular figures, 44px touch targets |
 
@@ -157,10 +157,11 @@ In the browser, the observable acceptance steps are:
 - **Tools are discovered, not declared.** The engine already publishes an MCP server
   (`integrations/physearth/mcp_server.py`), so the harness' own MCP client row brings the tools and
   their schemas stay in step with the engine. No tool shape is re-invented in TypeScript.
-- **The engine decides.** Validation, the approval gate, QC and evidence rules live in Python.
-  `approveRuns` is off by default; it is read only when the plugin starts the bridge, as
-  `--approval always`, so the operator chooses it and no request can. The MCP row starts in
-  `ask`; a run that waits returns `awaiting_approval`, and `physearth_decide` carries the verdict.
+- **The shared profile decides the boundary.** Validation, QC, handles and evidence stay in
+  Python. `policyProfile` is `direct` by default, so DSH owns user-facing permission and the
+  Python service does not publish a nested `physearth_ask` or duplicate review gate. Set it to
+  `regulated` when the internal research loop and `physearth_decide` are intentional; then
+  `approveRuns` controls the operator's `--approval always` setting.
 - **The restyle is tokens first.** 60 of the host's 89 `--dsw-alias-*` / `--dsw-specific-*`
   names are overridden — surfaces, four border weights, three label weights, the state colours,
   code blocks, bubbles, the sidebar, the scrollbars — so the whole interface moves together
@@ -249,5 +250,4 @@ object or the plugin loses them — the optional bridge then has no interpreter 
   row follows that switch". Use the card, or comment out both rows.
 - Codex and other non-DSH hosts use the MCP server directly (see `integrations/physearth/README.md`);
   this package is only the Harness UI shell.
-
 

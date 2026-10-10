@@ -46,7 +46,9 @@
         # and a row that cannot spawn shows up as an empty tool list with no error. install.sh
         # replaces this with an interpreter it has proved can import the engine.
         command: python3
-        args: ['-m', 'integrations.physearth', 'serve']
+        # External hosts use the shared direct profile: validation, QC, handles, evidence and
+        # report lint stay in Python, while permission and the user-facing loop stay in DSH.
+        args: ['-m', 'integrations.physearth', 'serve', '--profile', 'direct']
         # Relative to the harness' working directory, which is the checkout for anyone who
         # follows the README. install.sh rewrites this and `cwd` as absolute paths.
         env:
