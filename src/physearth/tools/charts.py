@@ -137,6 +137,44 @@ def _runs_still_missing(_session, requirement):
 
 
 def plot_planned_chart(chart_id, action="render", _owner=None, _session=None):
+    if action == "render_and_review":
+        rendered = plot_planned_chart(chart_id, action="render", _owner=_owner, _session=_session)
+        if rendered.get("status") != "success":
+            return rendered
+        # The normal host loop records a returned figure after this function returns. A
+        # combined operation must expose the just-rendered figure to its own review step.
+        figure = ((rendered.get("ui") or {}).get("figure") or {})
+        if _session is not None and figure:
+            figures = _session.setdefault("figures", [])
+            planned_id = figure.get("planned_chart_id") or chart_id
+            figure = dict(figure)
+            figure["planned_chart_id"] = planned_id
+            figure.setdefault("preview", False)
+            for index, existing in enumerate(figures):
+                if existing.get("planned_chart_id") == planned_id and not existing.get("preview"):
+                    figure["figure_number"] = existing.get("figure_number")
+                    figures[index] = figure
+                    break
+            else:
+                figure.setdefault("figure_number", 1 + sum(
+                    1 for existing in figures if not existing.get("preview")
+                ))
+                figures.append(figure)
+        reviewed = _review_planned_figure(chart_id, _owner=_owner, _session=_session)
+        if reviewed.get("status") != "success":
+            return reviewed
+        return _ok(
+            "Approved chart %s was rendered and passed Render QA in one operation." % chart_id,
+            {
+                "chart_id": chart_id,
+                "render": rendered.get("data") or {},
+                "render_check": reviewed.get("data") or {},
+            },
+            citations=list(dict.fromkeys(
+                (rendered.get("citations") or []) + (reviewed.get("citations") or [])
+            )),
+            ui=reviewed.get("ui"),
+        )
     if action == "review":
         return _review_planned_figure(chart_id, _owner=_owner, _session=_session)
     if _session is None or not _session.get("research_required"):

@@ -33,7 +33,7 @@ PROFILE_POLICIES = {
         "research_workflow": True,
         "internal_approval": False,
         "nested_agent": False,
-        "report_gate": "lint",
+        "report_gate": "hard",
         "sticky_session": True,
     },
     PROFILE_REGULATED: {

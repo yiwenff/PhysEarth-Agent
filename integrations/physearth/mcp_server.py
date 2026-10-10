@@ -190,6 +190,22 @@ HOST_TOOLS = (
         },
     },
     {
+        "name": "physearth_render_report",
+        "description": (
+            "Generate the final evidence-backed Markdown and HTML report after the approved "
+            "research plan and hard report checks pass. It refuses to materialize an unapproved "
+            "or unverifiable report."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "text": {"type": "string", "description": "The report narrative with evidence markers."},
+            },
+            "required": ["session_id", "text"],
+        },
+    },
+    {
         "name": "physearth_prompt_stack",
         "description": (
             "The prompt stack that makes an answer scientific: identity and style, citation and "
@@ -313,6 +329,13 @@ def _call_host_tool(name, arguments):
                 arguments.get("session_id"),
                 arguments.get("text", ""),
                 mode=arguments.get("mode"),
+            )
+        )
+    if name == "physearth_render_report":
+        return _json_text(
+            service.render_report(
+                arguments.get("session_id"),
+                arguments.get("text", ""),
             )
         )
     if name == "physearth_evidence":

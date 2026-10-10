@@ -20,6 +20,8 @@ Two facts shape the design:
 
 from __future__ import annotations
 
+import html
+import json
 import threading
 
 from physearth import agent, config, paths, prompt, registry, research, tools
@@ -115,6 +117,20 @@ def new_session(model=None):
         "profile": session["harness_profile"],
         "report_gate": _session_profile(session)["report_gate"],
         "testing": bool(_OPERATOR["testing"]),
+        # Give a new host the cheap deployment snapshot it otherwise obtains with a
+        # separate health/list-models round trip. Detailed parameter declarations remain
+        # available through list_models(model=...).
+        "deployment_snapshot": {
+            **health(),
+            "registered_models": [
+                {
+                    "name": item.name,
+                    "version": item.card.get("version"),
+                    "runnable_here": bool(item.runnable),
+                }
+                for item in _models()
+            ],
+        },
     }
 
 
@@ -436,7 +452,16 @@ def _auto_confirm_testing_capability(session, name, arguments, result, switches)
     if review.get("status") != "waiting_user":
         return result
     options = review.get("missing_operations") or []
-    if not options:
+    # An unavailable comparison model (MEMLS in the Figure 6 benchmark) has no missing
+    # operation to choose from, but testing mode still needs the documented partial-scope
+    # branch. Ordinary hosts continue to receive the explicit user-consent checkpoint.
+    partial_scope = bool(
+        options
+        or review.get("unavailable")
+        or review.get("not_comparable")
+        or review.get("unavailable_outputs")
+    )
+    if not partial_scope:
         return result
     confirmed = tools.call(
         name,
@@ -650,11 +675,11 @@ def verify_report(session_id, text, mode=None):
             "error": "unknown_report_mode",
             "summary": "mode must be 'lint' or 'hard'.",
         }
-    if selected_mode == "hard" and not policy["internal_approval"]:
+    if selected_mode == "hard" and policy["report_gate"] != "hard":
         return {
             "status": "terminal_error",
             "error": "hard_report_gate_disabled",
-            "summary": "The direct host profile exposes report verification as advisory lint.",
+            "summary": "This profile exposes report verification as advisory lint.",
         }
     state = session_state.new_state(session)
     state["model_runs"] = session.get("model_runs", 0)
@@ -673,6 +698,84 @@ def verify_report(session_id, text, mode=None):
         ),
         "checks": _jsonable(checks),
         "corrections": [gates.correction(check) for check in failed],
+    }
+
+
+def render_report(session_id, text):
+    """Materialize one evidence-backed Markdown/HTML report after the hard gate passes."""
+    session = get_session(session_id)
+    if session is None:
+        return {"status": "terminal_error", "error": "unknown_session", "summary": session_id}
+    project = session.get("research") or {}
+    phase = project.get("phase")
+    if phase not in ("approved", "completed"):
+        return {
+            "status": "needs_input",
+            "error": "research_plan_not_approved",
+            "summary": "The formatted report is blocked until the research plan is approved.",
+            "data": {"phase": phase, "next": _next_action(phase)},
+        }
+    verification = verify_report(session_id, text, mode="hard")
+    if not verification.get("passed"):
+        return {
+            "status": "needs_input",
+            "error": "report_verification_failed",
+            "summary": "The formatted report was not materialized because hard report verification failed.",
+            "data": {"verification": verification},
+        }
+    plan = _jsonable(project.get("plan") or {})
+    audit = _jsonable(evidence(session_id))
+    gate_line = "approved" if phase in ("approved", "completed") else str(phase or "unknown")
+    narrative = str(text or "").strip()
+    markdown = (
+        "# PhysEarth research report\\n\\n"
+        "## Gate status\\n\\n"
+        "- Research plan: **%s**\\n"
+        "- Report verification: **passed (hard)**\\n"
+        "- Source blocking: **%s**\\n\\n"
+        "## Report\\n\\n%s\\n\\n"
+        "## Approved plan (machine-readable)\\n\\n```json\\n%s\\n```\\n\\n"
+        "## Evidence ledger summary\\n\\n```json\\n%s\\n```\\n"
+        % (
+            gate_line,
+            "enabled" if _OPERATOR["testing"] else "disabled",
+            narrative,
+            json.dumps(plan, indent=2, ensure_ascii=False, sort_keys=True),
+            json.dumps(audit, indent=2, ensure_ascii=False, sort_keys=True),
+        )
+    )
+    html_report = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<title>PhysEarth research report</title>"
+        "<style>body{font:15px/1.5 system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 1rem;color:#18212b}"
+        "pre{white-space:pre-wrap;background:#f4f6f8;padding:1rem;border-radius:6px}"
+        "table{border-collapse:collapse}td,th{border:1px solid #ccd5dd;padding:.4rem}</style></head><body>"
+        "<h1>PhysEarth research report</h1>"
+        "<p><strong>Research plan:</strong> %s<br><strong>Report verification:</strong> passed (hard)<br>"
+        "<strong>Source blocking:</strong> %s</p>"
+        "<h2>Report</h2><pre>%s</pre>"
+        "<h2>Approved plan</h2><pre>%s</pre>"
+        "<h2>Evidence ledger summary</h2><pre>%s</pre>"
+        "</body></html>"
+        % (
+            html.escape(gate_line),
+            html.escape("enabled" if _OPERATOR["testing"] else "disabled"),
+            html.escape(narrative),
+            html.escape(json.dumps(plan, indent=2, ensure_ascii=False, sort_keys=True)),
+            html.escape(json.dumps(audit, indent=2, ensure_ascii=False, sort_keys=True)),
+        )
+    )
+    return {
+        "status": "success",
+        "summary": "Formatted Markdown and HTML reports were generated after the hard gate passed.",
+        "session_id": session_id,
+        "verification": verification,
+        "data": {
+            "markdown": markdown,
+            "html": html_report,
+            "plan_version": project.get("plan_version"),
+            "evidence_counts": audit.get("counts", {}),
+        },
     }
 
 

@@ -1,6 +1,6 @@
 {
   "name": "physearth",
-  "version": "1.0.0",
+  "version": "1.1.3",
   "description": "PhysEarth-Agent's physical model registry, evidence rules and bundled corpus, as a workflow a coding agent follows.",
   "author": {
     "name": "zjuiEMLab",
