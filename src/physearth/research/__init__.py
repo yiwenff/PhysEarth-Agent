@@ -70,6 +70,13 @@ from physearth.research.evidence import (
     _evidence_plan_problems,
     _evidence_problem_summary,
 )
+from physearth.research.editable import (
+    SOURCE_OPTIONS,
+    changes as editable_changes,
+    document_hash as editable_document_hash,
+    markdown as editable_markdown,
+    parameter_rows as editable_parameter_rows,
+)
 from physearth.research.execution import (
     execution_gaps,
     planned_chart_ids,
