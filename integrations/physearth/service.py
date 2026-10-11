@@ -44,6 +44,11 @@ _OPERATOR = {
 }
 _SWITCHES = "host_switches"
 
+# These are the fields accepted by ``research_plan(action='revise_plan')``.  Keep the
+# declaration beside the host-facing export so a client can build an editor from the
+# same contract that the research validator enforces.
+_PLAN_EDIT_FIELDS = tuple(research._REVISION_FIELDS)
+
 
 def configure(approval_mode=None, profile=None, testing=None):
     """Fix the operator's settings for this process; called by whatever starts the server.
@@ -93,6 +98,52 @@ def _jsonable(value):
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
+
+
+def _plan_edit_schema(session_id):
+    """Describe the reviewed patch operation for an exported plan.
+
+    The Markdown is intentionally an editable *draft*, not an alternate execution channel.
+    Applying a document still goes through the research tool, which validates it and returns
+    the project to ``plan_review`` before any model run can happen.
+    """
+    return {
+        "mode": "reviewed_patch",
+        "tool": "research_plan",
+        "action": "revise_plan",
+        "session_id": session_id,
+        "allowed_fields": list(_PLAN_EDIT_FIELDS),
+        "list_item_identity": {
+            key: list(value) for key, value in research.ITEM_IDENTITY.items()
+        },
+        "instructions": (
+            "Edit the portable Markdown document's Value, Source, Evidence, or Notes cells, "
+            "then submit the document to physearth_plan_apply. The renderer converts those "
+            "edits to research_plan(action='revise_plan', changes={...}); list items are "
+            "patched by their identity. The revision is validated and must be reviewed again "
+            "before execution. YAML/JSON protocol exports remain available for machine use."
+        ),
+        "example": {
+            "session_id": session_id,
+            "action": "revise_plan",
+            "changes": {},
+        },
+    }
+
+
+def _editable_plan(project, session_id):
+    """Return the generated protocol and the safe, host-visible edit contract."""
+    protocol = _jsonable(research.protocol_document(project))
+    markdown = research.editable_markdown(project, session_id=session_id)
+    return {
+        "editable": True,
+        "source_of_truth": "session.research.plan",
+        "edit_schema": _plan_edit_schema(session_id),
+        "protocol": protocol,
+        "protocol_yaml": research.protocol_yaml(project),
+        "plan_markdown": markdown,
+        "document_hash": research.editable_document_hash(markdown),
+    }
 
 
 def new_session(model=None):
@@ -834,16 +885,144 @@ def plan_status(session_id):
             "status": "success",
             "phase": None,
             "plan": None,
+            "editable": False,
+            "edit_schema": _plan_edit_schema(session_id),
             "next_action": _next_action(None),
         }
+    editable = _editable_plan(project, session_id)
     return {
         "status": "success",
         "phase": project.get("phase"),
         "plan_version": project.get("plan_version"),
         "plan": _jsonable(project.get("plan") or {}),
         "review_actions": _jsonable(project.get("review_log") or []),
+        "editable": editable["editable"],
+        "source_of_truth": editable["source_of_truth"],
+        "edit_schema": editable["edit_schema"],
+        "protocol": editable["protocol"],
+        "protocol_yaml": editable["protocol_yaml"],
+        "plan_markdown": editable["plan_markdown"],
+        "document_hash": editable["document_hash"],
         "next_action": _next_action(project.get("phase")),
     }
+
+
+def plan_export(session_id, format="markdown"):
+    """Export the current plan as an editable protocol document.
+
+    This is read-only.  It gives MCP clients a copyable/editable artifact while keeping
+    mutation on the existing validated ``research_plan`` revision path.
+    """
+    session = get_session(session_id)
+    if session is None:
+        return {"status": "terminal_error", "error": "unknown_session", "summary": session_id}
+    project = session.get("research") or {}
+    if not project:
+        return {
+            "status": "needs_input",
+            "error": "no_research_plan",
+            "summary": "No research plan exists yet; propose one before exporting it.",
+            "session_id": session_id,
+        }
+    requested = str(format or "markdown").lower()
+    editable = _editable_plan(project, session_id)
+    if requested in ("markdown", "md"):
+        content = editable["plan_markdown"]
+        mime_type = "text/markdown"
+        filename = "research-plan-v%03d.md" % int(project.get("plan_version", 1))
+    elif requested == "yaml":
+        content = editable["protocol_yaml"]
+        mime_type = "application/yaml"
+        filename = "research-plan-v%03d.yaml" % int(project.get("plan_version", 1))
+    elif requested == "json":
+        content = json.dumps(editable["protocol"], ensure_ascii=False, indent=2)
+        mime_type = "application/json"
+        filename = "research-plan-v%03d.json" % int(project.get("plan_version", 1))
+    else:
+        return {
+            "status": "terminal_error",
+            "error": "unsupported_format",
+            "summary": "format must be markdown, yaml or json",
+            "supported_formats": ["markdown", "yaml", "json"],
+        }
+    return {
+        "status": "success",
+        "summary": "Editable research protocol export; apply edits through the reviewed revision action.",
+        "session_id": session_id,
+        "phase": project.get("phase"),
+        "plan_version": project.get("plan_version"),
+        "filename": filename,
+        "mime_type": mime_type,
+        "document_hash": editable["document_hash"],
+        "editable": True,
+        "source_of_truth": editable["source_of_truth"],
+        "content": content,
+        "edit_schema": editable["edit_schema"],
+    }
+
+
+def plan_apply(session_id, document, base_plan_version=None, base_document_hash=None):
+    """Apply an edited Markdown plan as a validated, human-reviewable revision."""
+    session = get_session(session_id)
+    if session is None:
+        return {"status": "terminal_error", "error": "unknown_session", "summary": session_id}
+    project = session.get("research") or {}
+    if not project:
+        return {
+            "status": "needs_input",
+            "error": "no_research_plan",
+            "summary": "No research plan exists yet; propose one before applying edits.",
+        }
+    editable = _editable_plan(project, session_id)
+    current_version = int(project.get("plan_version") or 1)
+    if base_plan_version is None or not base_document_hash:
+        return {
+            "status": "needs_input",
+            "error": "edit_guard_required",
+            "summary": "Submit the plan version and document hash returned by physearth_plan_export.",
+            "current_plan_version": current_version,
+            "current_document_hash": editable["document_hash"],
+        }
+    if base_plan_version is not None and int(base_plan_version) != current_version:
+        return {
+            "status": "needs_input",
+            "error": "plan_version_conflict",
+            "summary": "The plan changed after this document was exported; re-export it before editing.",
+            "current_plan_version": current_version,
+        }
+    if base_document_hash and str(base_document_hash) != editable["document_hash"]:
+        return {
+            "status": "needs_input",
+            "error": "document_conflict",
+            "summary": "The source plan changed after this document was exported; re-export it before editing.",
+            "current_document_hash": editable["document_hash"],
+        }
+    try:
+        changes = research.editable_changes(project, document)
+    except ValueError as exc:
+        return {
+            "status": "needs_input",
+            "error": "editable_document_invalid",
+            "summary": str(exc),
+            "plan_version": current_version,
+        }
+    if not changes:
+        return {
+            "status": "success",
+            "summary": "No editable cells changed; the research plan remains unchanged.",
+            "session_id": session_id,
+            "plan_version": current_version,
+            "data": {"changes": {}},
+        }
+    return call(
+        "research_plan",
+        {
+            "action": "revise_plan",
+            "changes": changes,
+            "note": "Applied edits from the portable Markdown research-plan document.",
+        },
+        session_id=session_id,
+    )
 
 
 def _next_action(phase):

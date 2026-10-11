@@ -38,6 +38,8 @@ def test_tools_list_offers_the_engine_catalogue_and_the_host_tools():
         "physearth_evidence",
         "physearth_decide",
         "physearth_verify_report",
+        "physearth_plan_export",
+        "physearth_plan_apply",
     ):
         assert name in names, name
     assert len(names) >= 25
@@ -150,12 +152,77 @@ def test_a_refused_call_is_reported_as_an_error_the_model_can_read(monkeypatch):
 def test_resources_expose_the_prompt_stack_models_and_a_paper_section():
     listed = {item["uri"] for item in _call("resources/list")["resources"]}
     assert {"physearth://prompt-stack", "physearth://models", "physearth://knowledge", "physearth://tools"} <= listed
+    templates = _call("resources/templates/list")["resourceTemplates"]
+    assert any(item["uriTemplate"] == "physearth://plan/{session_id}" for item in templates)
 
     stack = _call("resources/read", {"uri": "physearth://prompt-stack"})["contents"][0]
     assert "citation" in stack["text"].lower()
 
     section = _call("resources/read", {"uri": "physearth://paper/smrt-v1/03"})["contents"][0]
     assert len(section["text"]) > 200
+
+
+def test_plan_status_and_export_expose_an_editable_protocol(monkeypatch):
+    session_id = "ses_editable_plan"
+    monkeypatch.setitem(
+        service._SESSIONS,
+        session_id,
+        {
+            "id": session_id,
+            "research": {
+                "phase": "plan_review",
+                "plan_version": 2,
+                "review_log": [],
+                "plan": {
+                    "question": "Which density range should be compared?",
+                    "objective": "Compare the declared theories.",
+                    "runs": [{"id": "baseline", "model": "smrt", "parameters": {"density_kg_m3": 100.0}}],
+                },
+            },
+        },
+    )
+
+    status = _call(
+        "tools/call",
+        {"name": "physearth_plan_status", "arguments": {"session_id": session_id}},
+    )
+    payload = _read_json(status)
+    assert status["structuredContent"]["protocol"]["format"] == "phys-earth/research-protocol"
+    assert payload["editable"] is True
+    assert "protocol_yaml" in payload
+    assert payload["edit_schema"]["action"] == "revise_plan"
+    assert payload["edit_schema"]["session_id"] == session_id
+
+    export = _call(
+        "tools/call",
+        {
+            "name": "physearth_plan_export",
+            "arguments": {"session_id": session_id, "format": "yaml"},
+        },
+    )
+    exported = _read_json(export)
+    assert exported["filename"] == "research-plan-v002.yaml"
+    assert exported["mime_type"] == "application/yaml"
+    assert "format: phys-earth/research-protocol" in exported["content"]
+    assert export["structuredContent"]["editable"] is True
+
+    markdown = _read_json(
+        _call(
+            "tools/call",
+            {
+                "name": "physearth_plan_export",
+                "arguments": {"session_id": session_id},
+            },
+        )
+    )
+    assert markdown["filename"] == "research-plan-v002.md"
+    assert markdown["mime_type"] == "text/markdown"
+    assert "| ID | Parameter | Editable value | Unit | Source | Model range | Evidence | Review note |" in markdown["content"]
+    assert "| P01 |" in markdown["content"]
+
+    resource = _call("resources/read", {"uri": "physearth://plan/" + session_id})
+    assert resource["contents"][0]["mimeType"] == "text/markdown"
+    assert resource["contents"][0]["text"].startswith("# ")
 
 
 def test_prompts_carry_the_evidence_rules_with_the_task():

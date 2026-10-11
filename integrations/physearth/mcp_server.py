@@ -125,13 +125,55 @@ HOST_TOOLS = (
     {
         "name": "physearth_plan_status",
         "description": (
-            "The research plan and its review state, so a host can show the human review step "
+            "The research plan and its review state, including a structured protocol, editable "
+            "Markdown document and the reviewed patch schema, so a host can show the human review step "
             "before anything expensive runs."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": {"type": "string"}},
             "required": ["session_id"],
+        },
+    },
+    {
+        "name": "physearth_plan_export",
+        "description": (
+            "Export the current research plan as an editable Markdown document with stable row "
+            "ids, or as YAML/JSON protocol data. "
+            "The export is read-only; submit Markdown edits through physearth_plan_apply so "
+            "the plan is validated and returned to human review."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "format": {
+                    "type": "string",
+                    "enum": ["markdown", "yaml", "json"],
+                    "default": "markdown",
+                },
+            },
+            "required": ["session_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "physearth_plan_apply",
+        "description": (
+            "Apply an edited Markdown research-plan document. Stable row ids and read-only "
+            "columns are checked, editable parameter cells are converted to a validated "
+            "research_plan revision, and the plan returns to human review."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "document": {"type": "string", "description": "The edited Markdown plan."},
+                "base_plan_version": {"type": "integer"},
+                "base_document_hash": {"type": "string"},
+            },
+            "required": ["session_id", "document", "base_plan_version", "base_document_hash"],
+            "additionalProperties": False,
         },
     },
     {
@@ -223,6 +265,15 @@ HOST_RESOURCES = (
     ("physearth://tools", "The declared tool catalogue with JSON schemas", "application/json"),
 )
 
+HOST_RESOURCE_TEMPLATES = (
+    {
+        "uriTemplate": "physearth://plan/{session_id}",
+        "name": "session research plan",
+        "description": "The current session's editable research plan as Markdown.",
+        "mimeType": "text/markdown",
+    },
+)
+
 HOST_PROMPTS = (
     {
         "name": "physearth-reproduce-figure",
@@ -254,12 +305,18 @@ HOST_PROMPTS = (
 )
 
 
-def _text(content):
-    return {"content": [{"type": "text", "text": content}], "isError": False}
+def _text(content, structured=None):
+    result = {"content": [{"type": "text", "text": content}], "isError": False}
+    if structured is not None:
+        result["structuredContent"] = structured
+    return result
 
 
-def _json_text(payload):
-    return _text(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+def _json_text(payload, structured=False):
+    return _text(
+        json.dumps(payload, ensure_ascii=False, indent=2, default=str),
+        structured=payload if structured else None,
+    )
 
 
 def _engine_tools():
@@ -341,7 +398,24 @@ def _call_host_tool(name, arguments):
     if name == "physearth_evidence":
         return _json_text(service.evidence(arguments.get("session_id")))
     if name == "physearth_plan_status":
-        return _json_text(service.plan_status(arguments.get("session_id")))
+        return _json_text(service.plan_status(arguments.get("session_id")), structured=True)
+    if name == "physearth_plan_export":
+        return _json_text(
+            service.plan_export(
+                arguments.get("session_id"), format=arguments.get("format", "markdown")
+            ),
+            structured=True,
+        )
+    if name == "physearth_plan_apply":
+        return _json_text(
+            service.plan_apply(
+                arguments.get("session_id"),
+                arguments.get("document", ""),
+                base_plan_version=arguments.get("base_plan_version"),
+                base_document_hash=arguments.get("base_document_hash"),
+            ),
+            structured=True,
+        )
     if name == "physearth_review":
         return _json_text(service.review(arguments.get("session_id"), arguments.get("choice")))
     if name == "physearth_prompt_stack":
@@ -362,7 +436,15 @@ def call_tool(name, arguments=None):
         return host
     engine_arguments = {k: v for k, v in arguments.items() if k not in HOST_ONLY_KEYS}
     result = _settle(service.call(name, engine_arguments, session_id=arguments.get("session_id")))
-    return {"content": [{"type": "text", "text": _render(result)}], "isError": _failed(result)}
+    response = {
+        "content": [{"type": "text", "text": _render(result)}],
+        "isError": _failed(result),
+    }
+    # The plan tool already returns the protocol generated by the research engine. Preserve
+    # it as MCP structured content so clients can render an editor instead of scraping text.
+    if name == "research_plan" and isinstance(result, dict):
+        response["structuredContent"] = result
+    return response
 
 
 # What the connected client declared at `initialize`, and the stdio channel `main` serves.
@@ -456,6 +538,20 @@ def read_resource(uri):
         return _json_resource(uri, service.knowledge_manifest())
     if uri == "physearth://tools":
         return _json_resource(uri, service.tools_manifest())
+    if uri.startswith("physearth://plan/"):
+        session_id = uri[len("physearth://plan/") :]
+        payload = service.plan_status(session_id)
+        if payload.get("status") != "success":
+            raise ValueError(payload.get("summary") or "plan unavailable")
+        return {
+            "contents": [
+                {
+                    "uri": uri,
+                    "mimeType": "text/markdown",
+                    "text": payload.get("plan_markdown", ""),
+                }
+            ]
+        }
     if uri.startswith("physearth://paper/"):
         return _paper_resource(uri)
     raise ValueError("unknown resource %r" % uri)
@@ -606,6 +702,8 @@ def handle(request):
                 ]
             },
         )
+    if method == "resources/templates/list":
+        return _ok(request_id, {"resourceTemplates": list(HOST_RESOURCE_TEMPLATES)})
     if method == "resources/read":
         try:
             return _ok(request_id, read_resource(params.get("uri", "")))
