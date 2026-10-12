@@ -1,0 +1,1 @@
+Reproduce Fig. 2c: 18.7 GHz brightness temperature (19V and 19H) versus snow density for an idealized uniform snowpack, microwave grain size 0.25 mm and temperature 265 K held constant, using SMRT with the improved Born approximation. Describe what happens near 450 kg m-3 and why.
