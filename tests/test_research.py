@@ -1576,10 +1576,11 @@ def test_question_coverage_gate_rejects_single_curve_for_multi_stage_attribution
         "and brightness temperatures and attribute the difference to the IBA absorption "
         "formulation versus the DORT solver.",
     )
-    assert result["status"] == "terminal_error"
-    assert "ka_per_m" in result["summary"]
-    assert "tb_v" in result["summary"] and "tb_h" in result["summary"]
-    assert "dort_streams" in result["summary"]
+    assert result["status"] == "needs_input", result["summary"]
+    warned = str(result["data"]["plan"]["validation_warnings"])
+    assert "ka_per_m" in warned
+    assert "tb_v" in warned and "tb_h" in warned
+    assert "dort_streams" in warned
 
 
 def test_a_card_without_output_groups_is_covered_by_its_declared_outputs():

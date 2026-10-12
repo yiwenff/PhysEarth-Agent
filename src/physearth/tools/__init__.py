@@ -125,6 +125,13 @@ SCRIPT_PATH_TOOLS = (
     "inspect_paper_figure", "list_models", "read_model_instruction", "read_reference_dataset",
     "run_analysis_script", "plot",
 )
+# While an approved plan is carried out: the planned runs, the planned chart and the reporting
+# guideline. Reading more of the paper, drawing a chart that is not in the plan or running a
+# configuration that is not in it each cost a model round trip and add a figure nobody asked for.
+EXECUTION_PATH_TOOLS = (
+    "run_planned_model", "run_planned_models", "plot_planned_chart", "read_research_guideline",
+    "read_paper_digest", "read_reference_dataset", "run_analysis_script",
+)
 # An explanation may cite sources and inspect models, but runs and plans nothing.
 ANSWER_PATH_TOOLS = (
     "list_literature", "read_literature", "read_paper_digest", "discover_literature",
@@ -132,7 +139,19 @@ ANSWER_PATH_TOOLS = (
 )
 
 
-def specs(switches_in=None, path=None):
+def phase(session):
+    """"execution" while an approved plan is being carried out, else None.
+
+    The agent loop narrows what the model is offered then. A plugin host calls the tools itself and
+    is not narrowed.
+    """
+    project = (session or {}).get("research") or {}
+    if (session or {}).get("research_required") and project.get("phase") == "approved":
+        return "execution"
+    return None
+
+
+def specs(switches_in=None, path=None, phase=None):
     """The tool list the model is offered.
 
     The corpus ablation removes the literature tools. The online layer removes the two
@@ -152,15 +171,17 @@ def specs(switches_in=None, path=None):
         hidden |= set(ONLINE_TOOLS)
     offered = [s for s in SPECS if s["function"]["name"] not in hidden]
     keep = {"run": RUN_PATH_TOOLS, "answer": ANSWER_PATH_TOOLS, "script": SCRIPT_PATH_TOOLS}.get(path)
+    if phase == "execution":
+        keep = EXECUTION_PATH_TOOLS
     if keep:
         offered = [s for s in offered if s["function"]["name"] in keep]
     return offered
 
 
-def call(name, arguments, owner=None, switches_in=None, session=None):
+def call(name, arguments, owner=None, switches_in=None, session=None, phase=None):
     flags = switches.resolve(switches_in)
     path = ((session or {}).get("route") or {}).get("path")
-    offered = {t["function"]["name"] for t in specs(switches_in, path)}
+    offered = {t["function"]["name"] for t in specs(switches_in, path, phase)}
     if name in DISPATCH and name not in offered:
         return _fail("Unknown tool %r. Available tools: %s." % (name, ", ".join(sorted(offered))))
     handler = DISPATCH.get(name)

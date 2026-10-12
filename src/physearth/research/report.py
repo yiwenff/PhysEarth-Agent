@@ -71,9 +71,19 @@ def report_generation_prompt(session):
         "11. Answer every quantity the question asks for with a number and unit from the "
         "recorded results, or say it is not identifiable."
     )
+    from physearth.research import execution
+
+    waived = execution.execution_gaps(session).get("waived_runs") or []
+    waived_line = (
+        "0. These side-check runs failed and were left out; say so under Limitations and do not "
+        "report numbers for them: %s."
+        % "; ".join("%s (%s)" % (item["label"], item["error"] or "failed") for item in waived)
+        if waived else ""
+    )
     return "\n".join(
         [
             "READER-FACING REPRODUCTION REPORT (be concise; use the recorded state; do not add new experiments)",
+            *([waived_line] if waived_line else []),
             "1. Start with the research result and conclusion. In the opening one or two "
             "paragraphs, answer the original question from the generated figure first: state "
             "what the image shows about convergence, divergence, ordering, or comparison. "
@@ -130,6 +140,25 @@ def report_generation_prompt(session):
             "RECORDED FORMAL FIGURES:\n" + "\n".join(figure_state),
             "UNAVAILABLE OR UNRUN COMPARISONS: %s" % (", ".join(map(str, gaps)) or "none recorded"),
         ]
+    )
+
+
+def lacks_narrative(session, answer):
+    """A report with figures but nothing written about them: empty, a status line, or only a table.
+
+    This one is not advice. The ledger and the figure are attached to the report by the harness,
+    so a draft that adds no words of its own would publish a page that answers nothing. The
+    reader of the report is sent one rewrite request for it.
+    """
+    figures = [figure for figure in session.get("figures") or [] if not figure.get("preview")]
+    if not figures:
+        return False
+    text = str(answer or "")
+    text = re.sub(r"\*\*Parameter sources\*\*.*?(?:\n\n|\Z)(?:\|.*\n?)*", " ", text, flags=re.S)
+    words = re.findall(r"[A-Za-z\u4e00-\u9fff]{2,}", re.sub(r"\|[^\n]*", " ", text))
+    lowered = text.lower()
+    return len(words) < 60 or any(
+        phrase in lowered for phrase in ("can now be delivered", "will now be delivered", "ready to deliver")
     )
 
 

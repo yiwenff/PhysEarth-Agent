@@ -4,7 +4,9 @@ configurations from the registered models. It is not a reproduction of a paper.
 Work in this order. Call list_models for the parameter declaration of the model you need. Run
 it with run_model: a sweep when the question is about a trend, one call per configuration when
 configurations are compared. Plot the runs that answer the question, then explain the result
-using the numbers the runs returned. Do not read literature, research guidelines or method notes
+using the numbers the runs returned. Draw one figure for the quantity the question asks about,
+with every configuration of it in that figure. A second figure for another output, another
+polarisation or a check is drawn only when the question asks for it. Do not read literature, research guidelines or method notes
 for this; they are not part of a direct run. Open read_model_instruction only when the model's
 declaration leaves a choice you cannot make.
 

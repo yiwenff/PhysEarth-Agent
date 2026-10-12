@@ -180,8 +180,10 @@ CAPABILITY_CHECK_SPEC = {
                         "be told exactly what has to be found. "
                         "The steps this reproduction needs besides "
                         "running registered models, from this list: %s. Pass an empty list if "
-                        "it needs none. A step with no tool is reported to the user with the "
-                        "options available; do not substitute a different quantity for it."
+                        "it needs none. Computing a quantity from model runs (derive_quantity) does not "
+                        "stop the plan: it is done by a script after the runs. A solve or a fit "
+                        "has no tool and is put to the user with the options available; do not "
+                        "substitute a different quantity for it."
                         % operations.vocabulary()
                     ),
                 },

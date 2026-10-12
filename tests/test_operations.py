@@ -112,20 +112,21 @@ def test_every_block_is_separated_so_the_page_can_render_it():
     assert text.count("\n\n") >= 3
 
 
-def test_an_output_no_model_declares_gets_the_options_even_if_no_step_was_listed():
+def test_an_output_no_model_declares_becomes_a_scripted_step_and_does_not_stop_the_plan():
     box = _session()
     report = capability.capability_check(
         box, reference_models=["smrt"], requested_outputs=["a_quantity_no_model_outputs"],
         local_models=["smrt"], needed_operations=[],
     )
-    assert report["status"] == "waiting_user"
-    item = report["missing_operations"][0]
+    assert report["status"] == "ready"
+    assert report["missing_operations"] == []
+    item = report["scripted_operations"][0]
     assert item["id"] == "derive_quantity"
     assert item["details"]["find"] == "a_quantity_no_model_outputs"
-    assert {option["id"] for option in item["options"]} == {"A", "B", "C"}
+    assert "derive_quantity" in report["needed_operations"]
 
 
-def test_the_message_for_that_case_offers_a_script_and_tells_the_agent_what_each_choice_means():
+def test_the_message_names_the_scripted_step_and_how_it_is_done():
     box = _session()
     result = tools.call(
         "research_capability_check",
@@ -133,11 +134,36 @@ def test_the_message_for_that_case_offers_a_script_and_tells_the_agent_what_each
          "requested_outputs": ["a_quantity_no_model_outputs"], "local_models": ["smrt"]},
         session=box,
     )
+    assert result["status"] == "success"
     text = result["summary"]
-    assert "A way to compute a_quantity_no_model_outputs" in text
-    assert "A. Write and run a script" in text and "B. Partial plan" in text
-    steps = result["data"]["if_the_person_chooses"]
-    assert "run_analysis_script" in steps["A"] and "confirm_partial" in steps["B"]
+    assert "Computed by script" in text and "a_quantity_no_model_outputs" in text
+    assert "run_analysis_script" in text and "the person reads the code" in text
+    assert "a research plan may now be proposed" in text
+
+
+def test_a_derived_quantity_the_agent_lists_does_not_stop_the_plan():
+    # A slope or a ratio of two model results has one sensible method, a short script.
+    box = _session()
+    report = _check(box, [{"step": "derive_quantity", "find": "low-density slope of each curve"}])
+    assert report["status"] == "ready"
+    assert report["missing_operations"] == []
+    assert report["scripted_operations"][0]["details"]["find"] == "low-density slope of each curve"
+
+
+def test_a_solve_or_a_fit_still_asks_because_the_methods_differ():
+    for step in ("solve_for_parameter", "fit_parameters"):
+        report = _check(_session(), [step])
+        assert report["status"] == "waiting_user", step
+        assert [item["id"] for item in report["missing_operations"]] == [step]
+
+
+def test_a_model_that_is_not_registered_still_asks():
+    box = _session()
+    report = capability.capability_check(
+        box, reference_models=["MEMLS"], requested_outputs=["tb_v"], local_models=["smrt"],
+        needed_operations=[],
+    )
+    assert report["status"] == "waiting_user" and report["unavailable"]
 
 
 def test_a_one_letter_reply_is_spelled_out_for_the_agent():

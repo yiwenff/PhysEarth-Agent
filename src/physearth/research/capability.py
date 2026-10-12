@@ -99,6 +99,22 @@ def _qualified(name):
     return text, version
 
 
+def _spelled_out(name):
+    """The abbreviation in "Improved Born approximation (IBA)", when the words spell it, else None.
+
+    A theory written out with its own initials in brackets is that theory, unlike "MEMLS (IBA)",
+    where the bracket describes another model. The initials of the words outside the bracket have
+    to be the letters inside it.
+    """
+    match = re.fullmatch(r"\s*([A-Za-z][A-Za-z\- ]+?)\s*\(([A-Za-z][A-Za-z\-]{1,8})\)\s*", str(name or ""))
+    if not match:
+        return None
+    words = [word for word in re.split(r"[\s\-]+", match.group(1)) if word]
+    initials = "".join(word[0] for word in words).lower()
+    abbreviation = match.group(2).replace("-", "")
+    return match.group(2) if initials == abbreviation.lower() else None
+
+
 _DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
 
 
@@ -271,7 +287,10 @@ def _capability_check_one(
         evidence_resolution = None
         version_note = None
         qualified = _qualified(name)
-        if qualified and registry.resolve_configuration(qualified[0], session)[0] is None:
+        abbreviation = _spelled_out(name)
+        if abbreviation and registry.resolve_configuration(abbreviation, session)[0] is not None:
+            entry, canonical, configuration, options = registry.resolve_configuration(abbreviation, session)
+        elif qualified and registry.resolve_configuration(qualified[0], session)[0] is None:
             # What stands outside the brackets names the model. "MEMLS (IBA, grain type 2)"
             # is MEMLS described as using IBA; matching the IBA in the aside resolved it to
             # smrt and reported an unregistered model as supported.
@@ -509,16 +528,19 @@ def _capability_check_one(
     ]
     evidence = list(dict.fromkeys(evidence))
     ops_available, ops_missing, ops_unknown = operations.resolve(needed_operations)
-    if len(ops_missing) > 1:
-        # A specific step (a solve, a fit) already says how the quantity is to be obtained.
-        ops_missing = [item for item in ops_missing if item["id"] != "derive_quantity"] or ops_missing
-    if unavailable_outputs and not ops_missing:
+    # Deriving a quantity from model runs (a slope, a ratio, a difference) has one sensible
+    # method, a short script the person reads before it runs. It is recorded as a scripted step
+    # and does not stop the plan. A solve or a fit stays a decision, because there the methods
+    # differ, and so do a model that is not registered and one that is not comparable.
+    scripted = [item for item in ops_missing if item["id"] == "derive_quantity"]
+    ops_missing = [item for item in ops_missing if item["id"] != "derive_quantity"]
+    if unavailable_outputs and not scripted:
         # Whether the model said so or not, a quantity no registered model outputs has to be
         # derived. That does not depend on the model remembering to list the step.
-        ops_missing = [operations.derive_item(unavailable_outputs)]
+        scripted = [operations.derive_item(unavailable_outputs)]
     status = (
         "waiting_user"
-        if unavailable or not_comparable or unavailable_outputs or ops_missing
+        if unavailable or not_comparable or ops_missing
         else "waiting_resources"
         if resource_gaps
         else "ready"
@@ -544,8 +566,11 @@ def _capability_check_one(
         "supported_outputs": supported_outputs,
         "unavailable_outputs": unavailable_outputs,
         "resource_gaps": resource_gaps,
-        "needed_operations": ops_available + [item["id"] for item in ops_missing],
+        "needed_operations": ops_available
+        + [item["id"] for item in ops_missing]
+        + [item["id"] for item in scripted],
         "missing_operations": ops_missing,
+        "scripted_operations": scripted,
         "unrecognised_operations": ops_unknown,
         # Visible rather than silent: if the paper's spelling was not the registered one,
         # the report says which name it was matched to, so a reader can object.
@@ -714,6 +739,7 @@ def _aggregate_target_reports(reports, expected_targets, previous=None):
     requested_models = []
     requested_outputs = []
     needed_operations, unrecognised_operations, missing_operations = [], [], []
+    scripted_operations = []
     for report in all_reports:
         for name in report.get("needed_operations") or ():
             if name not in needed_operations:
@@ -724,6 +750,9 @@ def _aggregate_target_reports(reports, expected_targets, previous=None):
         for item in report.get("missing_operations") or ():
             if item.get("id") not in [m.get("id") for m in missing_operations]:
                 missing_operations.append(item)
+        for item in report.get("scripted_operations") or ():
+            if item.get("id") not in [m.get("id") for m in scripted_operations]:
+                scripted_operations.append(item)
         for field, destination in (
             ("resource_gaps", resource_gaps),
             ("resolved_names", resolved_names),
@@ -752,6 +781,7 @@ def _aggregate_target_reports(reports, expected_targets, previous=None):
         "unavailable_outputs": unavailable_outputs,
         "needed_operations": needed_operations,
         "missing_operations": missing_operations,
+        "scripted_operations": scripted_operations,
         "unrecognised_operations": unrecognised_operations,
         "resource_gaps": resource_gaps,
         "resolved_names": resolved_names,

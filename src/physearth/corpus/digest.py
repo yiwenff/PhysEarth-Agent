@@ -104,6 +104,28 @@ def grounded(items, sections, slug):
     return kept, dropped
 
 
+def captions(session, slug):
+    """Each figure's own caption, verbatim from the paper's card.
+
+    A caption states the conditions the figure was made with, and the running text can state them
+    differently (a typo in either). The digest is built from the text, so without these the agent
+    never sees the caption's value. They are copied, not summarised, so nothing here is a model's
+    wording.
+    """
+    out = []
+    for figure in (live.card(session, slug) or {}).get("figures") or ():
+        caption = " ".join(str(figure.get("caption") or "").split())
+        if not caption or not figure.get("id"):
+            continue
+        out.append({
+            "ref": "%s#%s" % (slug, figure["id"]),
+            "section": str(figure["id"]),
+            "kind": "figure",
+            "statement": ("Caption of %s: %s" % (figure.get("title") or figure["id"], caption))[:600],
+        })
+    return out
+
+
 def _extract(session, slug, sections):
     """One model call over the whole paper; reasoning off, since this is transcription."""
     from physearth import config
@@ -157,6 +179,7 @@ def digest(session, slug, extract=None):
         return None, False
     raw, usage = (extract or _extract)(session, slug, sections)
     items, dropped = grounded(raw, sections, slug)
+    items = items + captions(session, slug)
     record = {
         "slug": slug,
         "items": items,

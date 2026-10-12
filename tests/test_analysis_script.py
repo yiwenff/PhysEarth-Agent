@@ -202,6 +202,40 @@ def test_the_loop_holds_the_script_for_a_person_and_records_the_approval(monkeyp
     assert box["analysis_runs"][0]["sha256"] == analysis.code_hash(code)
 
 
+def _stream_one_script(monkeypatch, box):
+    code = "print('hello')\n"
+    script = [
+        [_call_chunk("run_analysis_script", json.dumps({"code": code, "purpose": "say hello"}))],
+        [_Chunk(_Delta(content="done"))],
+    ]
+    client, _sent = _fake_client(script)
+    monkeypatch.setattr(agent.completion, "_client", lambda: client)
+    list(agent.stream("say hello with a script", session=box))
+    return code
+
+
+def test_the_loop_still_holds_a_script_after_the_plan_approval_switched_runs_to_always(monkeypatch):
+    # Approving a plan covers the model runs, so the interface sets "always" for them. It did not
+    # read any code, so a script is still put to the person.
+    box = session.new_session("m")
+    approval.set_mode(box, approval.ASK)
+    approval.set_mode(box, approval.ALWAYS)
+    code = _stream_one_script(monkeypatch, box)
+    waiting = approval.pending(box)
+    assert waiting and waiting["tool"] == "run_analysis_script"
+    assert waiting["description"]["code"] == code
+    assert not box.get("approved_scripts")
+
+
+def test_a_headless_session_holds_nothing_and_runs_no_script(monkeypatch):
+    # A test, a script or an evaluation run has nobody to ask, so nothing is held and nothing runs.
+    box = session.new_session("m")
+    approval.set_mode(box, approval.ALWAYS)
+    _stream_one_script(monkeypatch, box)
+    assert approval.pending(box) is None
+    assert not box.get("approved_scripts") and not box.get("analysis_runs")
+
+
 def test_a_refused_model_call_tells_the_script_why():
     code = 'run_model("smrt", density_kg_m3=5000)\n'
     result = _run(code, _approved(code))

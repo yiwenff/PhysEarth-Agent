@@ -13,6 +13,7 @@ session, and eviction takes that session's oldest entry first, so a busy visitor
 cannot push another visitor's results out from under them.
 """
 
+import math
 import statistics
 import threading
 import uuid
@@ -68,7 +69,8 @@ def clear_owner(owner):
 def summarise_series(series, units):
     summary = {}
     for name, values in (series or {}).items():
-        numbers = [v for v in values if isinstance(v, (int, float))]
+        # Finite only: a point the model refused is NaN and would poison min, max and mean.
+        numbers = [v for v in values if isinstance(v, (int, float)) and math.isfinite(v)]
         if not numbers:
             summary[name] = {"unit": units.get(name, ""), "note": "no numeric values"}
             continue

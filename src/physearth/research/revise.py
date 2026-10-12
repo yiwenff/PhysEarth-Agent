@@ -21,7 +21,7 @@ from physearth.research.common import (
 )
 from physearth.research.coverage import _target_coverage
 from physearth.research.evidence import _evidence_plan_problems, _evidence_problem_summary
-from physearth.research.mapping import _is_paper_context_problem, _mark_user_revised_inputs
+from physearth.research.mapping import _is_paper_context_problem, _mark_user_revised_inputs, people_said
 from physearth.research.metadata import _repair_reproduction_metadata
 from physearth.research.normalise import (
     _clean_charts,
@@ -304,7 +304,9 @@ def revise(session, changes=None, note=""):
             "provenance": "user_specified",
             "blocking": True,
         })
-    _mark_user_revised_inputs(plan, before_plan, changes)
+    _mark_user_revised_inputs(
+        plan, before_plan, changes, people_said(session, plan.get("question") or project.get("question"))
+    )
     plan.setdefault("automatic_repairs", []).extend(metadata_repairs)
     evidence_problems = _evidence_plan_problems(
         session,

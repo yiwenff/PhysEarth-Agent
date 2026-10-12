@@ -398,8 +398,30 @@ def _same_value(left, right):
     return left == right
 
 
-def _mark_user_revised_inputs(plan, before_plan, changes):
-    """Mark run parameters changed through a user revision as user-specified."""
+def people_said(session, question=""):
+    """The question and every message the person has sent, as one text."""
+    return " ".join([str(question or "")] + [str(item) for item in (session or {}).get("user_messages") or ()])
+
+
+def _in_words(value, text):
+    """Whether a value is in the person's words: a number among their numbers, a name as a word."""
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        numbers = [float(item) for item in re.findall(r"(?<![\w.])[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", text)]
+        return any(
+            abs(float(value) * scale - number) <= 1e-9 * max(1.0, abs(number))
+            for number in numbers for scale in (1.0, 1e3, 1e6, 1e-3, 1e-6, 1e9, 1e-9)
+        )
+    return str(value).lower().replace("_", " ") in text.lower().replace("_", " ")
+
+
+def _mark_user_revised_inputs(plan, before_plan, changes, said=""):
+    """Mark run parameters the person's words changed as user-specified.
+
+    The planning agent also revises runs, to answer a reviewer or a refused check, and its
+    changes are its own. An input is the person's only when its new value is in what they said.
+    """
     revised_runs = changes.get("runs")
     if not isinstance(revised_runs, list):
         return
@@ -415,7 +437,7 @@ def _mark_user_revised_inputs(plan, before_plan, changes):
         old = before_runs.get(str(run.get("id"))) or {}
         old_parameters = old.get("parameters") or {}
         for name, value in (run.get("parameters") or {}).items():
-            if not _same_value(old_parameters.get(name), value):
+            if not _same_value(old_parameters.get(name), value) and _in_words(value, said):
                 changed_inputs.add(name)
     if not changed_inputs:
         return

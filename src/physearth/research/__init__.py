@@ -130,6 +130,7 @@ from physearth.research.report import (
     parameter_sources_table,
     report_generation_prompt,
     report_problem,
+    lacks_narrative,
     report_warnings,
     safe_report,
 )
