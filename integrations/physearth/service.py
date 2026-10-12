@@ -20,11 +20,10 @@ Two facts shape the design:
 
 from __future__ import annotations
 
-import html
 import json
 import threading
 
-from physearth import agent, config, paths, prompt, registry, research, tools
+from physearth import agent, config, documents, paths, prompt, registry, research, tools
 from physearth import session as session_state
 from physearth.corpus import knowledge, reference
 from physearth.harness import approval, gates, switches as harness_switches
@@ -735,20 +734,28 @@ def verify_report(session_id, text, mode=None):
     state = session_state.new_state(session)
     state["model_runs"] = session.get("model_runs", 0)
     checks = gates.final_checks(text, state)
-    failed = [check for check in checks if not check["passed"]]
+    # Evidence, citations and abstract depth decide whether a claim can be believed, so they fail the
+    # report. The others describe wording and layout; they come back as notes.
+    failed = [
+        check for check in checks if not check["passed"] and check["rule"] not in gates.ADVISORY_RULES
+    ]
+    advice = [check for check in checks if not check["passed"] and check["rule"] in gates.ADVISORY_RULES]
+    if failed:
+        summary = "Failed: " + ", ".join(check["rule"] for check in failed) + "."
+    elif advice:
+        summary = "Passed. Notes: " + ", ".join(check["rule"] for check in advice) + "."
+    else:
+        summary = f"All {len(checks)} checks passed."
     return {
         "status": "success",
         "session_id": session["id"],
         "passed": not failed,
         "mode": selected_mode,
         "enforced": selected_mode == "hard",
-        "summary": (
-            f"All {len(checks)} checks passed."
-            if not failed
-            else "Failed: " + ", ".join(check["rule"] for check in failed) + "."
-        ),
+        "summary": summary,
         "checks": _jsonable(checks),
         "corrections": [gates.correction(check) for check in failed],
+        "notes": [gates.correction(check) for check in advice],
     }
 
 
@@ -779,14 +786,16 @@ def render_report(session_id, text):
     gate_line = "approved" if phase in ("approved", "completed") else str(phase or "unknown")
     narrative = str(text or "").strip()
     markdown = (
-        "# PhysEarth research report\\n\\n"
-        "## Gate status\\n\\n"
-        "- Research plan: **%s**\\n"
-        "- Report verification: **passed (hard)**\\n"
-        "- Source blocking: **%s**\\n\\n"
-        "## Report\\n\\n%s\\n\\n"
-        "## Approved plan (machine-readable)\\n\\n```json\\n%s\\n```\\n\\n"
-        "## Evidence ledger summary\\n\\n```json\\n%s\\n```\\n"
+        "# PhysEarth research report\n\n"
+        "## Gate status\n\n"
+        "- Research plan: **%s**\n"
+        "- Report verification: **passed (hard)**\n"
+        "- Source blocking: **%s**\n\n"
+        "## Report\n\n%s\n\n"
+        "## Approved plan (machine-readable)\n\n"
+        "<details><summary>Plan JSON</summary>\n\n```json\n%s\n```\n\n</details>\n\n"
+        "## Evidence ledger summary\n\n"
+        "<details><summary>Ledger JSON</summary>\n\n```json\n%s\n```\n\n</details>\n"
         % (
             gate_line,
             "enabled" if _OPERATOR["testing"] else "disabled",
@@ -795,26 +804,17 @@ def render_report(session_id, text):
             json.dumps(audit, indent=2, ensure_ascii=False, sort_keys=True),
         )
     )
-    html_report = (
-        "<!doctype html><html><head><meta charset='utf-8'>"
-        "<title>PhysEarth research report</title>"
-        "<style>body{font:15px/1.5 system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 1rem;color:#18212b}"
-        "pre{white-space:pre-wrap;background:#f4f6f8;padding:1rem;border-radius:6px}"
-        "table{border-collapse:collapse}td,th{border:1px solid #ccd5dd;padding:.4rem}</style></head><body>"
-        "<h1>PhysEarth research report</h1>"
-        "<p><strong>Research plan:</strong> %s<br><strong>Report verification:</strong> passed (hard)<br>"
-        "<strong>Source blocking:</strong> %s</p>"
-        "<h2>Report</h2><pre>%s</pre>"
-        "<h2>Approved plan</h2><pre>%s</pre>"
-        "<h2>Evidence ledger summary</h2><pre>%s</pre>"
-        "</body></html>"
-        % (
-            html.escape(gate_line),
-            html.escape("enabled" if _OPERATOR["testing"] else "disabled"),
-            html.escape(narrative),
-            html.escape(json.dumps(plan, indent=2, ensure_ascii=False, sort_keys=True)),
-            html.escape(json.dumps(audit, indent=2, ensure_ascii=False, sort_keys=True)),
-        )
+    # The page the Studio writes for a finished report: figures embedded, the plan's conditions
+    # and runs as tables, source chips, citation markers. One renderer, so a plugin user reads
+    # what a Studio user reads.
+    html_report = documents.report_document(
+        session,
+        narrative,
+        gates=[
+            ("Research plan", gate_line),
+            ("Report verification", "passed (hard)"),
+            ("Source blocking", "enabled" if _OPERATOR["testing"] else "disabled"),
+        ],
     )
     return {
         "status": "success",
@@ -938,12 +938,18 @@ def plan_export(session_id, format="markdown"):
         content = json.dumps(editable["protocol"], ensure_ascii=False, indent=2)
         mime_type = "application/json"
         filename = "research-plan-v%03d.json" % int(project.get("plan_version", 1))
+    elif requested == "html":
+        # The page the Studio opens for a plan: conditions with their sources, the run matrix,
+        # figures, assumptions. Read-only; edits still go through the Markdown document.
+        content = documents.plan_document(session)
+        mime_type = "text/html"
+        filename = "research-plan-v%03d.html" % int(project.get("plan_version", 1))
     else:
         return {
             "status": "terminal_error",
             "error": "unsupported_format",
-            "summary": "format must be markdown, yaml or json",
-            "supported_formats": ["markdown", "yaml", "json"],
+            "summary": "format must be markdown, yaml, json or html",
+            "supported_formats": ["markdown", "yaml", "json", "html"],
         }
     return {
         "status": "success",
@@ -1041,6 +1047,31 @@ def review(session_id, choice):
     session = get_session(session_id)
     if session is None:
         return {"status": "terminal_error", "error": "unknown_session", "summary": session_id}
+    wanted = str(choice or "").strip().lower()
+    if wanted in ("approve", "approved", "run", "preview"):
+        # The same two words a person types in the Studio's Conversation. `approve` is one decision
+        # for the plan, its required figures and their execution; `preview` first draws the layout
+        # from pseudo-data. Both read the project's phase, so a repeat is ignored, not an error.
+        if not session.get("research"):
+            return {
+                "status": "needs_input",
+                "error": "no_research_plan",
+                "summary": "No research plan exists yet; propose one before reviewing it.",
+                "session_id": session_id,
+            }
+        command = "preview" if wanted == "preview" else "approve"
+        return _jsonable(research.apply_chat_command(session, command))
+    if wanted in ("reject", "regenerate"):
+        return {
+            "status": "needs_input",
+            "error": "revise_instead",
+            "summary": (
+                "A plan is changed by revising it, not by rejecting it: export it with "
+                "physearth_plan_export, edit the cells and send it back with physearth_plan_apply, "
+                "or call research_plan with action=revise_plan. Nothing runs until it is approved."
+            ),
+            "session_id": session_id,
+        }
     result = research.review_action(session, choice)
     return _jsonable(result)
 

@@ -43,16 +43,20 @@ say so instead of writing it. A plausible-looking density is worse than an admit
    server was intentionally started with `regulated`.
 4. Before asserting anything, `physearth_evidence` — it lists the sections read, models run, datasets
    queried and figures produced. Cite that list.
-5. Before giving the user an answer you wrote yourself, call `physearth_render_report` with the full
-   narrative. It performs hard report verification and returns formatted Markdown and HTML; fix
-   every failed check it reports before publishing.
+5. While you draft an answer yourself, `physearth_verify_report` with the full text is the advisory
+   check: every marker must resolve to evidence the session gathered. For the final report, call
+   `physearth_render_report` with the full narrative. It performs hard report verification and
+   returns formatted Markdown and HTML; fix every failed check it reports before publishing.
 
 Read `references/tools.md` for each tool's parameters and result shape, and
 `references/troubleshooting.md` when a call is refused or a session is not found.
 
 ## Workloads worth recognising
 
-**Reproduce a figure from a paper.** `list_literature`, then `read_literature` with the default
+**Reproduce a figure from a paper.** A target is what the figure plots: its curves, as outputs a
+registered model declares. What the question asks you to conclude from it (a range, a slope, a ratio,
+where curves agree) you work out from the finished runs yourself; it is not a target and does not
+stop the plan. `list_literature`, then `read_literature` with the default
 key-information mode to find the relevant section. Use `detail="full"` and a targeted `focus`
 only when the response lists a missing fact. Read each paper figure once; call
 `inspect_paper_figure` only when axes, legend or conditions remain missing. After the approved
@@ -61,6 +65,13 @@ plan, call `run_planned_models` once for all independent curves and call
 operation already performs render and Render QA; do not follow it with separate render/review
 calls. In an approved plan, never probe alternatives with raw `run_model`: the harness refuses
 the first unplanned configuration and disables further direct calls for that session.
+
+The gate before any run is one approval. `physearth_review` with `approve` approves the plan, its
+required figures and their execution in a single decision, the same as typing `approve` in the
+Studio; `preview` first draws the layout from pseudo-data. A plan is refused only for a value or
+combination the model declaration rejects, a sweep that cannot move its output, a chart its runs
+cannot draw, or a name that does not exist. Points listed under Things to check (a missing source, a
+thin protocol field) do not block it, so do not loop on them; the reviewer sees them.
 Compare only when observation, units and configuration are comparable; say so when they are not.
 
 **Sweep a parameter.** One `run_model` per point, or `research_plan` when the sweep is large
@@ -118,8 +129,9 @@ and do not treat silence as approval.
 
 ## Boundaries
 
-- This skill does not run arbitrary Python to compute a physical quantity. If a formula is needed
-  and no registered model provides it, say so.
+- It never replaces a registered model with your own physics. If a formula is needed and no
+  registered model provides it, say so. Analysis around model runs (a slope, a ratio, a root) is
+  yours to write, as above.
 - It does not answer general software questions, and it does not have a UI — output is text,
   tool results and generated figures.
 - Long arrays never enter your context: a run returns a handle and a bounded preview, and the full

@@ -139,7 +139,7 @@ HOST_TOOLS = (
         "name": "physearth_plan_export",
         "description": (
             "Export the current research plan as an editable Markdown document with stable row "
-            "ids, or as YAML/JSON protocol data. "
+            "ids, as YAML/JSON protocol data, or as the same HTML page the Studio shows. "
             "The export is read-only; submit Markdown edits through physearth_plan_apply so "
             "the plan is validated and returned to human review."
         ),
@@ -149,7 +149,7 @@ HOST_TOOLS = (
                 "session_id": {"type": "string"},
                 "format": {
                     "type": "string",
-                    "enum": ["markdown", "yaml", "json"],
+                    "enum": ["markdown", "yaml", "json", "html"],
                     "default": "markdown",
                 },
             },
@@ -185,7 +185,12 @@ HOST_TOOLS = (
                 "session_id": {"type": "string"},
                 "choice": {
                     "type": "string",
-                    "description": "primary, approve, reject, regenerate, or a chart id.",
+                    "description": (
+                        "approve: one decision that approves the plan, its required figures and "
+                        "their execution. preview: draw the layout from pseudo-data first. To "
+                        "change a plan, revise it with physearth_plan_apply or "
+                        "research_plan(action=revise_plan)."
+                    ),
                 },
             },
             "required": ["session_id", "choice"],

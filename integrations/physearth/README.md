@@ -19,7 +19,7 @@ For Codex, four artifacts make that up, and only the first needs installing:
 
 | Artifact | Where | Why |
 |---|---|---|
-| MCP server | `integrations/physearth/mcp_server.py` | the capability: up to 28 tools, resources, prompts |
+| MCP server | `integrations/physearth/mcp_server.py` | the capability: up to 33 tools, resources, prompts |
 | Skill | `.agents/skills/physearth/` | the procedure: which tool for which question, what a valid run looks like, which refusals are results. Discovered from the repository, so nothing to install |
 | Config | `integrations/codex/config.snippet.toml` | the file form of the registration |
 | Guide | `integrations/codex/README.md` | the two commands, the checks, and the honest limits |

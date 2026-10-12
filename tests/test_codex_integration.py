@@ -419,7 +419,13 @@ def test_the_marketplace_entry_carries_what_the_cli_needs_to_install_it():
 
     assert entry["source"] == {"source": "local", "path": "./integrations/codex/physearth"}
     assert (ROOT / entry["source"]["path"]).resolve() == PLUGIN.resolve()
-    # The version the CLI printed in `plugin list` is the manifest's, not the catalogue's.
-    assert manifest["version"] == "1.0.0"
+    # The version the CLI printed in `plugin list` is the manifest's, not the catalogue's. The
+    # Claude Code plugin ships the same skill, so a bump in one is a bump in both.
+    claude = json.loads(
+        (ROOT / "integrations" / "claude-code" / "physearth" / ".claude-plugin" / "plugin.json")
+        .read_text()
+    )
+    assert SEMVER_RE.fullmatch(manifest["version"]), manifest["version"]
+    assert manifest["version"] == claude["version"]
     assert entry["policy"]["installation"] == "AVAILABLE"
     assert "version" not in entry, "the manifest is the one place a version lives"

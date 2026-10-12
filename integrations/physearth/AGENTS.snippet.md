@@ -8,13 +8,18 @@ the explicit `regulated` profile preserves the nested research-agent workflow.
 
 ## Use the server, not your memory
 
-- `physearth_health` first, once per session: it says which models actually run here.
+- `physearth_session_new` first: it returns a snapshot of which models actually run here. Call
+  `physearth_health` only when no snapshot is available.
 - Any number that carries a unit (K, dB, m³/m³) comes from `run_model`, never from an
   estimate. It returns a handle plus a bounded preview; the arrays stay in the session.
 - Drive the engine tools directly for a whole question. Do not call `physearth_ask` from a host
   that is already the user-facing agent; that nested loop is available only in `regulated` mode.
 - `physearth_evidence` before you assert anything: it lists the sections read, the models run,
   the datasets queried and the figures produced. Cite that material, not your recollection.
+- The gate before a run is one approval: `physearth_review` with `approve` approves the plan, its
+  required figures and their execution together, as typing `approve` does in the Studio. A plan is
+  refused only for what the model declaration rejects, a sweep that cannot move its output, a chart
+  its runs cannot draw, or a name that does not exist. Notes under Things to check do not block it.
 - A run needs a session (`physearth_session_new`); handles resolve only inside the session that
   produced them, and an unknown session is reported rather than guessed at.
 
@@ -28,7 +33,8 @@ the explicit `regulated` profile preserves the nested research-agent workflow.
   provenance and keeps result handles in one session. In `regulated` mode a human approval gate
   can return `status: awaiting_approval`; show the pending run and pass the person's answer to
   `physearth_decide`. Never decide it yourself.
-- Check an answer you wrote with `physearth_verify_report` before giving it to the user.
+- Check a draft answer you wrote with `physearth_verify_report` (advisory), and produce the final
+  report with `physearth_render_report`, which applies the hard checks after the plan is approved.
 - Cite `[paper#section]` only for a section actually read, `[model:name@version]` only for a
   run actually performed, `[data:slug]` only for a dataset actually queried. An
   abstract-only source (`[abs:doi]`) may never carry a value in kelvin, decibels or

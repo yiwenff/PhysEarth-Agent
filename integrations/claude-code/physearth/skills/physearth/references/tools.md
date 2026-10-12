@@ -12,12 +12,13 @@ replacing the schema.
 
 | Tool | Required | What it is for |
 |---|---|---|
-| `physearth_health` | — | Once per session. Registered models, runnable models, declared tools, bundled evidence, whether inference credentials are configured. |
-| `physearth_session_new` | — | Open a research session. Optional `model`. Handles resolve **only** inside the session that produced them, so this comes before any run. The result says which approval setting the operator chose. |
+| `physearth_health` | — | Once per session when no session snapshot is available. Registered models, runnable models, declared tools, bundled evidence, whether inference credentials are configured. |
+| `physearth_session_new` | — | Open a research session. Optional `model`. Includes a cheap health/model snapshot; handles resolve **only** inside the session that produced them. |
 | `physearth_ask` | `question` | A whole question in one call: the agent plans, runs registered models and reports the evidence it used. Optional `session_id`, `model`. Returns `awaiting_approval` with a `pending` run when the turn stops for a verdict. |
 | `physearth_decide` | `session_id`, `decision` | The user's verdict on a pending run, `approve` or `reject`. A paused question resumes where it stopped; a held `run_model` call runs or comes back declined. Only with the user's own answer. |
 | `physearth_evidence` | — | The audit trail for a session: sections read, models run, datasets queried, method notes, result handles, figures. Cite this, not your recollection. |
-| `physearth_verify_report` | `session_id`, `text` | Check an answer you wrote against the session before giving it: every marker must resolve to evidence the session gathered, and `[abs:doi]` may carry no result value. Failed checks come with the fix. |
+| `physearth_verify_report` | `session_id`, `text` | Check an answer you wrote against the session before giving it: every marker must resolve to evidence the session gathered, and `[abs:doi]` may carry no result value. Those failures come with the fix. Notes about wording and layout (the value the question asked for, the tagged appendix, the parameter block) pass the report and are listed under `notes`. |
+| `physearth_render_report` | `session_id`, `text` | After the plan is approved, run hard report verification and return formatted Markdown and HTML. The HTML is the report page the Studio writes: figures the session drew, the conditions and runs as tables, source labels, citation markers. Refuses to materialize an unapproved or unverifiable report. |
 | `physearth_prompt_stack` | — | The rules the engine itself answers under: citation and evidence-tier policy, the untrusted-text boundary, the research workflow. |
 
 ## Models and runs
@@ -27,15 +28,17 @@ replacing the schema.
 | `list_models` | — | The registry. With no argument: every model, its tier and outputs. With `model`: that model's full parameter declaration, including the ranges a run is validated against. |
 | `run_model` | `model` | The core operation. Parameters you omit take the card's defaults; `sweep` runs a range. Returns a **handle**, a bounded preview, units and quality control. |
 | `run_planned_model` | `run_id` | Execute one run of an approved research plan. The backend uses the parameters stored in the plan — never reconstruct them yourself. |
+| `run_planned_models` | `run_ids` | Execute several approved plan runs in one batch. Each id keeps the same plan gate, validation, QC and result handle. |
 
 ## Evidence you may read
 
 | Tool | Required | What it is for |
 |---|---|---|
 | `list_literature` | — | Search what this conversation can already read: the bundled corpus, papers taken in with `ingest_paper`, the method notes. Optional `query`, `scenario`, `kind`. |
-| `read_literature` | — | One paper. With only `slug`: its section index. With `section_id`: that section's full text. This is what a `[paper#section]` citation resolves against. |
-| `read_paper_figure` | `paper`, `figure_id` | Metadata and the stored source asset for one extracted figure. Not model output, and not digitised automatically. |
-| `inspect_paper_figure` | `paper`, `figure_id` | Look at the figure itself rather than its caption. Returns the source image when a vision endpoint is configured, plus an audit trail. |
+| `read_paper_digest` | `slug` | A whole paper read once per session: what each figure plots, stated results and ranges, configurations and limitations, each with a citable section marker. Call it first for a paper you will plan or report from; a second call is free. |
+| `read_literature` | — | One paper. With only `slug`: its section index. With `section_id`: compact key information by default; use `detail=full` and a targeted `focus` only for a missing detail. This is what a `[paper#section]` citation resolves against. |
+| `read_paper_figure` | `paper`, `figure_id` | Metadata and the stored source asset for one extracted figure. Repeated reads in a session return cached metadata. |
+| `inspect_paper_figure` | `paper`, `figure_id` | Inspect a figure only when required axes, legend or conditions remain missing. Repeated focus requests are cached. |
 | `read_reference_dataset` | — | Measured data. No argument lists datasets; `dataset` plus optional `filters` returns how many rows match and a preview. |
 | `discover_literature` | `query` | OpenAlex, i.e. beyond what this deployment ships. Optional `from_year`, `limit`. Metadata and abstracts only — abstracts are `[abs:doi]` evidence. |
 | `ingest_paper` | — | Take one paper's full text into the session, by `doi` or `file_path`. Afterwards it is readable with `read_literature`. |
@@ -45,7 +48,7 @@ replacing the schema.
 | Tool | Required | What it is for |
 |---|---|---|
 | `plot` | `series` | Draw from result **handles**, never from numbers you retyped and never from code you wrote. Optional `kind`, labels, `dry_run`, `metrics`. |
-| `plot_planned_chart` | `chart_id` | Render one approved chart from a research plan; the backend collects the compatible planned runs. Optional `action`. |
+| `plot_planned_chart` | `chart_id` | Render one approved chart from a research plan; use `action=render_and_review` for one combined render/QA operation. |
 
 ## The research workflow
 
@@ -54,7 +57,9 @@ replacing the schema.
 | `read_research_guideline` | — | Read before proposing or reporting research. Optional `topic`. |
 | `research_plan` | `action` | `propose`, then the review transitions. The plan is structured: steps, parameter mapping, outputs, charts, success criteria, stop conditions. |
 | `physearth_plan_status` | — | The plan and its review state, so a host can show the human review step before anything expensive runs. |
-| `physearth_review` | `session_id`, `choice` | Advance the human review gate — the same single action the Studio's review button takes. |
+| `physearth_plan_export` | `session_id` | The current plan as an editable Markdown document with stable row ids, as YAML/JSON, or with `format=html` as the same plan page the Studio shows. Read-only; edits go back through `physearth_plan_apply`. The Source column uses the Studio's words: `extracted`, `derived`, `user`, `default`, `assumed`, `guessed`. |
+| `physearth_plan_apply` | `session_id`, `document`, `base_plan_version`, `base_document_hash` | Apply an edited Markdown plan. Row ids and read-only columns are checked, editable cells become a validated `research_plan` revision, and the plan returns to human review. |
+| `physearth_review` | `session_id`, `choice` | Advance the human review gate. `approve` is one decision for the plan, its required figures and their execution, the same as typing `approve` in the Studio's Conversation; `preview` first draws the layout from pseudo-data. To change a plan, revise it with `physearth_plan_apply`; `reject` only points there. |
 
 ## Registering and extending
 
