@@ -1,0 +1,31 @@
+id: smrt-fig6-guided
+task_id: t1-smrt-fig6-memls-iba
+eyebrow: PARTIAL MODEL SUPPORT
+title: SMRT's two IBA versions against MEMLS
+summary: >-
+  Figure 6 compares SMRT with the original and the default IBA against an independent code,
+  MEMLS. SMRT is registered; MEMLS is not. The agent has to say so, ask before narrowing the
+  scope, and reproduce only what it can run.
+button_label: Start guided Figure 6 reproduction
+paper_section: "3.1.3"
+paper_figures: [fig06.png]
+figure_targets:
+  - id: fig06.png
+    label: "Figure 6: Comparison with MEMLS-IBA"
+unavailable_models: [MEMLS]
+demo_question: >-
+  How do brightness temperatures at V and H polarization differ between SMRT with the
+  original IBA and SMRT with the default IBA, for the exponential microstructure the paper
+  uses, and how do both compare with MEMLS? Say which of the figure's models you could run
+  and which you could not, and check your SMRT run against the scattering and absorption
+  coefficients the paper reports for this configuration.
+expected: >-
+  The capability check reports MEMLS as unavailable and asks before planning SMRT only; two
+  angle sweeps (original and default IBA) reproduce the four SMRT curves, the default IBA
+  lies about 1.2-1.4 K above the original, the coefficients match the paper's, and the
+  MEMLS comparison is stated as not reproduced.
+workflow:
+  - Read the paper once and inspect Figure 6.
+  - The capability check finds SMRT registered and MEMLS not, and asks whether to continue with SMRT only.
+  - Review the plan, then approve it in Conversation.
+  - Runs, chart and report; the report says what was and was not reproduced.

@@ -29,7 +29,7 @@ reference:
     frequency_ghz: 37.0
     thickness_m: 10.0
     density_kg_m3: 300.0
-    temperature_k: 256.0
+    temperature_k: 265.0
     radius_m: 0.0001
     stickiness: 0.5
     sweep_parameter: angle_deg
@@ -52,6 +52,9 @@ reference:
     tolerance_rmse: 2.0
     unit: K
 notes: >-
+  Temperature is 265 K: the Figure 4 caption says 265 K and Section 3.1.2 says 256 K. The
+  plotted brightness temperatures reach 264 K, which a 256 K snowpack cannot emit, and SMRT
+  at 265 K reproduces the curves to 0.09 K RMSE (256 K misses by 9 K).
   Thickness is graded loosely because the paper says semi-infinite and the adapter has a
   finite ceiling; anything at or above a few metres is optically the same medium at 37 GHz.
 capability:

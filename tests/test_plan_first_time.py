@@ -71,13 +71,16 @@ def test_every_failing_check_is_reported_in_one_refusal():
         ),
         session=box,
     )
+    # Only what would make the figure impossible stops the plan. A missing protocol field is
+    # advice, so it is not among the refusals.
     assert result["status"] == "terminal_error"
-    codes = [item["error_code"] for item in result["data"]["checks"]]
-    assert codes == ["plan_quality", "chart_axis_mismatch"]
-    assert result["data"]["error_code"] == "plan_quality"
-    assert "limitations (limitations)" in result["data"]["problems"]
+    assert result["data"]["error_code"] == "chart_axis_mismatch"
+    assert "checks" not in result["data"]
     assert any("angle_deg" in str(item) for item in result["data"]["problems"])
-    assert "Also failing" in result["summary"]
+    advised = tools.call("research_plan", _plan(limitations=[]), session=_session())
+    assert advised["status"] == "needs_input", advised["summary"]
+    warned = advised["data"]["plan"]["validation_warnings"]
+    assert any("limitations" in str(item) for item in warned)
 
 
 def test_a_missing_baseline_is_filled_from_the_runs_and_shown_at_review():
@@ -162,7 +165,7 @@ def test_a_draft_repair_can_remove_one_item():
     assert replaced == [{"label": "no id"}]
 
 
-def test_a_list_of_complete_items_replaces_and_drops_what_it_leaves_out():
+def test_a_list_that_adds_an_item_replaces_and_drops_what_it_leaves_out():
     from physearth.research import ITEM_COMPLETE, ITEM_IDENTITY
     from physearth.research import merge_items as _merge_items
 
@@ -173,12 +176,41 @@ def test_a_list_of_complete_items_replaces_and_drops_what_it_leaves_out():
             "provenance_class": "backend_default",
         },
     ]
-    corrected = [retained[0]]
     keys, complete = ITEM_IDENTITY["parameter_mapping"], ITEM_COMPLETE["parameter_mapping"]
+    corrected = [
+        retained[0],
+        {"model": "smrt", "model_input": "temperature_k", "provenance_class": "backend_default"},
+    ]
     assert _merge_items(copy.deepcopy(retained), corrected, keys, complete) == corrected
     patch = [{"model": "smrt", "model_input": "density_kg_m3", "paper_value": 300}]
     merged = _merge_items(copy.deepcopy(retained), patch, keys, complete)
     assert len(merged) == 2 and merged[0]["paper_value"] == 300
+
+
+def test_one_complete_repair_of_a_retained_item_does_not_delete_the_others():
+    from physearth.research import ITEM_COMPLETE, ITEM_IDENTITY
+    from physearth.research import merge_items as _merge_items
+
+    names = ["density_kg_m3", "frequency_ghz", "radius_m", "corr_length_m", "temperature_k"]
+    retained = [
+        {"model": "smrt", "model_input": name, "provenance_class": "paper_explicit",
+         "mapped_value": position}
+        for position, name in enumerate(names)
+    ]
+    keys, complete = ITEM_IDENTITY["parameter_mapping"], ITEM_COMPLETE["parameter_mapping"]
+    repair = [{"model": "smrt", "model_input": "corr_length_m",
+               "provenance_class": "backend_default", "mapped_value": 0.00015}]
+    merged = _merge_items(copy.deepcopy(retained), repair, keys, complete)
+    assert [item["model_input"] for item in merged] == names
+    assert merged[3]["mapped_value"] == 0.00015
+    assert merged[4]["mapped_value"] == 4
+
+    removed = _merge_items(
+        copy.deepcopy(retained),
+        [{"model": "smrt", "model_input": "temperature_k", "remove": True}],
+        keys, complete,
+    )
+    assert [item["model_input"] for item in removed] == names[:-1]
 
 
 def test_a_renamed_target_still_finds_its_capability_check():
@@ -217,13 +249,15 @@ def test_a_reviewed_plan_is_patched_by_id_and_keeps_its_defaults():
 
 def test_a_revision_sent_as_top_level_fields_is_applied():
     box = _session()
-    refused = tools.call("research_plan", _plan(metrics=[]), session=box)
-    assert refused["status"] == "terminal_error"
+    first = tools.call("research_plan", _plan(metrics=[]), session=box)
+    assert first["status"] == "needs_input", first["summary"]
+    assert any("metrics" in str(item) for item in first["data"]["plan"]["validation_warnings"])
     revised = tools.call(
         "research_plan", {"action": "revise_plan", "metrics": ["trend agreement"]}, session=box,
     )
     assert revised["status"] == "needs_input", revised["summary"]
     assert box["research"]["plan"]["metrics"] == ["trend agreement"]
+    assert not any("metrics" in str(item) for item in box["research"]["plan"]["validation_warnings"])
 
 
 def test_a_run_patch_drops_the_undeclared_parameter_that_refused_it():

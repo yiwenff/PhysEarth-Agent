@@ -1,194 +1,194 @@
 {
  "harnessoff-literatureoff-capabilityoff__onlineoff__nostate": {
-  "chars": 19318,
-  "sha256": "28a321099ad26311e600a37a30989fa72f2b7fa288c279011fbbba1205094be1"
+  "chars": 20254,
+  "sha256": "7b0ddd993310c3ac55e692b5b3abd205b8a0869de04a6442d9801324a0ffb6e6"
  },
  "harnessoff-literatureoff-capabilityoff__onlineoff__research": {
-  "chars": 13220,
-  "sha256": "38c27ea44926dd8fea1b8696330d517708078e20630b801e0eec6af3a47c0e19"
+  "chars": 14192,
+  "sha256": "8a731ceae06fbeb55de149959d4703f832192bf7256ace8d4749ac92faaa409a"
  },
  "harnessoff-literatureoff-capabilityoff__onlineoff__state": {
-  "chars": 12804,
-  "sha256": "afc1919f00b991dc8b45f1c2e43fe1f085b90157676d7d05e2c51126ba6d031e"
+  "chars": 13776,
+  "sha256": "653640f0f94ea8cebfd8528762880bf98afafcce33d62b860b852710f78ebd57"
  },
  "harnessoff-literatureoff-capabilityoff__onlineon__nostate": {
-  "chars": 20634,
-  "sha256": "1d666f857dcf461a9370b4ba6d48cfdca918589dc3654746412441e669f01f3b"
+  "chars": 21570,
+  "sha256": "624d9dbf656004f079576b8dd2492f7e13083d6e77874d9ebc0c312d1028cc15"
  },
  "harnessoff-literatureoff-capabilityoff__onlineon__research": {
-  "chars": 13220,
-  "sha256": "38c27ea44926dd8fea1b8696330d517708078e20630b801e0eec6af3a47c0e19"
+  "chars": 14192,
+  "sha256": "8a731ceae06fbeb55de149959d4703f832192bf7256ace8d4749ac92faaa409a"
  },
  "harnessoff-literatureoff-capabilityoff__onlineon__state": {
-  "chars": 12804,
-  "sha256": "afc1919f00b991dc8b45f1c2e43fe1f085b90157676d7d05e2c51126ba6d031e"
+  "chars": 13776,
+  "sha256": "653640f0f94ea8cebfd8528762880bf98afafcce33d62b860b852710f78ebd57"
  },
  "harnessoff-literatureoff-capabilityon__onlineoff__nostate": {
-  "chars": 19318,
-  "sha256": "28a321099ad26311e600a37a30989fa72f2b7fa288c279011fbbba1205094be1"
+  "chars": 20254,
+  "sha256": "7b0ddd993310c3ac55e692b5b3abd205b8a0869de04a6442d9801324a0ffb6e6"
  },
  "harnessoff-literatureoff-capabilityon__onlineoff__research": {
-  "chars": 11764,
-  "sha256": "4141315ec1c873e2be5e3e5feea6ad66274b2636e62e2e3ed4f47570b1dd0933"
+  "chars": 12700,
+  "sha256": "ae38f90d4fe9adb110dd6f1579560dbca082b6549042bac43ba5e3a6160a277a"
  },
  "harnessoff-literatureoff-capabilityon__onlineoff__state": {
-  "chars": 11348,
-  "sha256": "25b89e74553e4b34b5dc83d4205d3d7139fc3c70a6a63a39c9ca4e1266d4253f"
+  "chars": 12284,
+  "sha256": "1bb1117157b9417b33e5af413430d024906f9ae5be37eaf0c42b7c23850abe3f"
  },
  "harnessoff-literatureoff-capabilityon__onlineon__nostate": {
-  "chars": 20634,
-  "sha256": "1d666f857dcf461a9370b4ba6d48cfdca918589dc3654746412441e669f01f3b"
+  "chars": 21570,
+  "sha256": "624d9dbf656004f079576b8dd2492f7e13083d6e77874d9ebc0c312d1028cc15"
  },
  "harnessoff-literatureoff-capabilityon__onlineon__research": {
-  "chars": 11764,
-  "sha256": "4141315ec1c873e2be5e3e5feea6ad66274b2636e62e2e3ed4f47570b1dd0933"
+  "chars": 12700,
+  "sha256": "ae38f90d4fe9adb110dd6f1579560dbca082b6549042bac43ba5e3a6160a277a"
  },
  "harnessoff-literatureoff-capabilityon__onlineon__state": {
-  "chars": 11348,
-  "sha256": "25b89e74553e4b34b5dc83d4205d3d7139fc3c70a6a63a39c9ca4e1266d4253f"
+  "chars": 12284,
+  "sha256": "1bb1117157b9417b33e5af413430d024906f9ae5be37eaf0c42b7c23850abe3f"
  },
  "harnessoff-literatureon-capabilityoff__onlineoff__nostate": {
-  "chars": 19318,
-  "sha256": "28a321099ad26311e600a37a30989fa72f2b7fa288c279011fbbba1205094be1"
+  "chars": 20254,
+  "sha256": "7b0ddd993310c3ac55e692b5b3abd205b8a0869de04a6442d9801324a0ffb6e6"
  },
  "harnessoff-literatureon-capabilityoff__onlineoff__research": {
-  "chars": 21812,
-  "sha256": "7b8acfb13ca256b002739d055174c68a81ea1df6cf9235adfd0bbf2d0efe908b"
+  "chars": 22784,
+  "sha256": "aef6a2f7df51ff3429d9842c06eb2be2907fe6af5f81eef2fe7fc6f580660224"
  },
  "harnessoff-literatureon-capabilityoff__onlineoff__state": {
-  "chars": 21396,
-  "sha256": "643b540f0dee225773a221b50cd98531e401f5d9da98b7247e248b8017363016"
+  "chars": 22368,
+  "sha256": "0cb354fb82b4a27eb415b296b88f9e06a1f41d43c705b1eb357d188877b90450"
  },
  "harnessoff-literatureon-capabilityoff__onlineon__nostate": {
-  "chars": 20634,
-  "sha256": "1d666f857dcf461a9370b4ba6d48cfdca918589dc3654746412441e669f01f3b"
+  "chars": 21570,
+  "sha256": "624d9dbf656004f079576b8dd2492f7e13083d6e77874d9ebc0c312d1028cc15"
  },
  "harnessoff-literatureon-capabilityoff__onlineon__research": {
-  "chars": 23128,
-  "sha256": "2e29e3eb7d94cacb8c68d47c21ad64e0580cefdc1c9de9661a8e2a6d4bd16611"
+  "chars": 24100,
+  "sha256": "e0e111b8be88b98ae468f90bc12007cc39d30d25d8f7dae8bb638cf9a21f03bd"
  },
  "harnessoff-literatureon-capabilityoff__onlineon__state": {
-  "chars": 22712,
-  "sha256": "710a2f4cc74e07354a74f435005629721a2c9cf43fa7ae4dee61560c4189a5a0"
+  "chars": 23684,
+  "sha256": "de0a59555ce97514ba0f6e57e3656e69840c52b24b89405c035be9e619a3a729"
  },
  "harnessoff-literatureon-capabilityon__onlineoff__nostate": {
-  "chars": 19318,
-  "sha256": "28a321099ad26311e600a37a30989fa72f2b7fa288c279011fbbba1205094be1"
+  "chars": 20254,
+  "sha256": "7b0ddd993310c3ac55e692b5b3abd205b8a0869de04a6442d9801324a0ffb6e6"
  },
  "harnessoff-literatureon-capabilityon__onlineoff__research": {
-  "chars": 20356,
-  "sha256": "86668f864cf46532db8d8cb8e87a0d47f373fd64dd061b5a43d6d6b0a9af245b"
+  "chars": 21292,
+  "sha256": "b9c7909717a5e0a87d7b566d68714080cdd6370b374d565a260948b34459fd21"
  },
  "harnessoff-literatureon-capabilityon__onlineoff__state": {
-  "chars": 19940,
-  "sha256": "3424389f23cf63209c86b2bd0680066218f8b71e7c2c69126c9aaed584a194f5"
+  "chars": 20876,
+  "sha256": "9d8370a42ffb7485847d79fee81ffb9ff36032100a4c7693cf3db0d2efee24d0"
  },
  "harnessoff-literatureon-capabilityon__onlineon__nostate": {
-  "chars": 20634,
-  "sha256": "1d666f857dcf461a9370b4ba6d48cfdca918589dc3654746412441e669f01f3b"
+  "chars": 21570,
+  "sha256": "624d9dbf656004f079576b8dd2492f7e13083d6e77874d9ebc0c312d1028cc15"
  },
  "harnessoff-literatureon-capabilityon__onlineon__research": {
-  "chars": 21672,
-  "sha256": "6734d9f68fe05dea8ac220316f3aa0c0d5c7210fe961680c6e576d9a8ec729f4"
+  "chars": 22608,
+  "sha256": "f88886c09606ed612030dae7444ddbb986a9eaad4a990ae302c3af99003c0e90"
  },
  "harnessoff-literatureon-capabilityon__onlineon__state": {
-  "chars": 21256,
-  "sha256": "d28855f1d534e73ef7efb3c5d6a715c2e31989c003ebc2f7703038bb41e8dd97"
+  "chars": 22192,
+  "sha256": "0ebccdb6989aca424f5476d6576d6cce97c9e2089aac3e94990428ed4229f1f6"
  },
  "harnesson-literatureoff-capabilityoff__onlineoff__nostate": {
-  "chars": 19318,
-  "sha256": "28a321099ad26311e600a37a30989fa72f2b7fa288c279011fbbba1205094be1"
+  "chars": 20254,
+  "sha256": "7b0ddd993310c3ac55e692b5b3abd205b8a0869de04a6442d9801324a0ffb6e6"
  },
  "harnesson-literatureoff-capabilityoff__onlineoff__research": {
-  "chars": 13220,
-  "sha256": "38c27ea44926dd8fea1b8696330d517708078e20630b801e0eec6af3a47c0e19"
+  "chars": 14192,
+  "sha256": "8a731ceae06fbeb55de149959d4703f832192bf7256ace8d4749ac92faaa409a"
  },
  "harnesson-literatureoff-capabilityoff__onlineoff__state": {
-  "chars": 12804,
-  "sha256": "afc1919f00b991dc8b45f1c2e43fe1f085b90157676d7d05e2c51126ba6d031e"
+  "chars": 13776,
+  "sha256": "653640f0f94ea8cebfd8528762880bf98afafcce33d62b860b852710f78ebd57"
  },
  "harnesson-literatureoff-capabilityoff__onlineon__nostate": {
-  "chars": 20634,
-  "sha256": "1d666f857dcf461a9370b4ba6d48cfdca918589dc3654746412441e669f01f3b"
+  "chars": 21570,
+  "sha256": "624d9dbf656004f079576b8dd2492f7e13083d6e77874d9ebc0c312d1028cc15"
  },
  "harnesson-literatureoff-capabilityoff__onlineon__research": {
-  "chars": 13220,
-  "sha256": "38c27ea44926dd8fea1b8696330d517708078e20630b801e0eec6af3a47c0e19"
+  "chars": 14192,
+  "sha256": "8a731ceae06fbeb55de149959d4703f832192bf7256ace8d4749ac92faaa409a"
  },
  "harnesson-literatureoff-capabilityoff__onlineon__state": {
-  "chars": 12804,
-  "sha256": "afc1919f00b991dc8b45f1c2e43fe1f085b90157676d7d05e2c51126ba6d031e"
+  "chars": 13776,
+  "sha256": "653640f0f94ea8cebfd8528762880bf98afafcce33d62b860b852710f78ebd57"
  },
  "harnesson-literatureoff-capabilityon__onlineoff__nostate": {
-  "chars": 19318,
-  "sha256": "28a321099ad26311e600a37a30989fa72f2b7fa288c279011fbbba1205094be1"
+  "chars": 20254,
+  "sha256": "7b0ddd993310c3ac55e692b5b3abd205b8a0869de04a6442d9801324a0ffb6e6"
  },
  "harnesson-literatureoff-capabilityon__onlineoff__research": {
-  "chars": 11764,
-  "sha256": "4141315ec1c873e2be5e3e5feea6ad66274b2636e62e2e3ed4f47570b1dd0933"
+  "chars": 12700,
+  "sha256": "ae38f90d4fe9adb110dd6f1579560dbca082b6549042bac43ba5e3a6160a277a"
  },
  "harnesson-literatureoff-capabilityon__onlineoff__state": {
-  "chars": 11348,
-  "sha256": "25b89e74553e4b34b5dc83d4205d3d7139fc3c70a6a63a39c9ca4e1266d4253f"
+  "chars": 12284,
+  "sha256": "1bb1117157b9417b33e5af413430d024906f9ae5be37eaf0c42b7c23850abe3f"
  },
  "harnesson-literatureoff-capabilityon__onlineon__nostate": {
-  "chars": 20634,
-  "sha256": "1d666f857dcf461a9370b4ba6d48cfdca918589dc3654746412441e669f01f3b"
+  "chars": 21570,
+  "sha256": "624d9dbf656004f079576b8dd2492f7e13083d6e77874d9ebc0c312d1028cc15"
  },
  "harnesson-literatureoff-capabilityon__onlineon__research": {
-  "chars": 11764,
-  "sha256": "4141315ec1c873e2be5e3e5feea6ad66274b2636e62e2e3ed4f47570b1dd0933"
+  "chars": 12700,
+  "sha256": "ae38f90d4fe9adb110dd6f1579560dbca082b6549042bac43ba5e3a6160a277a"
  },
  "harnesson-literatureoff-capabilityon__onlineon__state": {
-  "chars": 11348,
-  "sha256": "25b89e74553e4b34b5dc83d4205d3d7139fc3c70a6a63a39c9ca4e1266d4253f"
+  "chars": 12284,
+  "sha256": "1bb1117157b9417b33e5af413430d024906f9ae5be37eaf0c42b7c23850abe3f"
  },
  "harnesson-literatureon-capabilityoff__onlineoff__nostate": {
-  "chars": 19318,
-  "sha256": "28a321099ad26311e600a37a30989fa72f2b7fa288c279011fbbba1205094be1"
+  "chars": 20254,
+  "sha256": "7b0ddd993310c3ac55e692b5b3abd205b8a0869de04a6442d9801324a0ffb6e6"
  },
  "harnesson-literatureon-capabilityoff__onlineoff__research": {
-  "chars": 21812,
-  "sha256": "7b8acfb13ca256b002739d055174c68a81ea1df6cf9235adfd0bbf2d0efe908b"
+  "chars": 22784,
+  "sha256": "aef6a2f7df51ff3429d9842c06eb2be2907fe6af5f81eef2fe7fc6f580660224"
  },
  "harnesson-literatureon-capabilityoff__onlineoff__state": {
-  "chars": 21396,
-  "sha256": "643b540f0dee225773a221b50cd98531e401f5d9da98b7247e248b8017363016"
+  "chars": 22368,
+  "sha256": "0cb354fb82b4a27eb415b296b88f9e06a1f41d43c705b1eb357d188877b90450"
  },
  "harnesson-literatureon-capabilityoff__onlineon__nostate": {
-  "chars": 20634,
-  "sha256": "1d666f857dcf461a9370b4ba6d48cfdca918589dc3654746412441e669f01f3b"
+  "chars": 21570,
+  "sha256": "624d9dbf656004f079576b8dd2492f7e13083d6e77874d9ebc0c312d1028cc15"
  },
  "harnesson-literatureon-capabilityoff__onlineon__research": {
-  "chars": 23128,
-  "sha256": "2e29e3eb7d94cacb8c68d47c21ad64e0580cefdc1c9de9661a8e2a6d4bd16611"
+  "chars": 24100,
+  "sha256": "e0e111b8be88b98ae468f90bc12007cc39d30d25d8f7dae8bb638cf9a21f03bd"
  },
  "harnesson-literatureon-capabilityoff__onlineon__state": {
-  "chars": 22712,
-  "sha256": "710a2f4cc74e07354a74f435005629721a2c9cf43fa7ae4dee61560c4189a5a0"
+  "chars": 23684,
+  "sha256": "de0a59555ce97514ba0f6e57e3656e69840c52b24b89405c035be9e619a3a729"
  },
  "harnesson-literatureon-capabilityon__onlineoff__nostate": {
-  "chars": 19318,
-  "sha256": "28a321099ad26311e600a37a30989fa72f2b7fa288c279011fbbba1205094be1"
+  "chars": 20254,
+  "sha256": "7b0ddd993310c3ac55e692b5b3abd205b8a0869de04a6442d9801324a0ffb6e6"
  },
  "harnesson-literatureon-capabilityon__onlineoff__research": {
-  "chars": 20356,
-  "sha256": "86668f864cf46532db8d8cb8e87a0d47f373fd64dd061b5a43d6d6b0a9af245b"
+  "chars": 21292,
+  "sha256": "b9c7909717a5e0a87d7b566d68714080cdd6370b374d565a260948b34459fd21"
  },
  "harnesson-literatureon-capabilityon__onlineoff__state": {
-  "chars": 19940,
-  "sha256": "3424389f23cf63209c86b2bd0680066218f8b71e7c2c69126c9aaed584a194f5"
+  "chars": 20876,
+  "sha256": "9d8370a42ffb7485847d79fee81ffb9ff36032100a4c7693cf3db0d2efee24d0"
  },
  "harnesson-literatureon-capabilityon__onlineon__nostate": {
-  "chars": 20634,
-  "sha256": "1d666f857dcf461a9370b4ba6d48cfdca918589dc3654746412441e669f01f3b"
+  "chars": 21570,
+  "sha256": "624d9dbf656004f079576b8dd2492f7e13083d6e77874d9ebc0c312d1028cc15"
  },
  "harnesson-literatureon-capabilityon__onlineon__research": {
-  "chars": 21672,
-  "sha256": "6734d9f68fe05dea8ac220316f3aa0c0d5c7210fe961680c6e576d9a8ec729f4"
+  "chars": 22608,
+  "sha256": "f88886c09606ed612030dae7444ddbb986a9eaad4a990ae302c3af99003c0e90"
  },
  "harnesson-literatureon-capabilityon__onlineon__state": {
-  "chars": 21256,
-  "sha256": "d28855f1d534e73ef7efb3c5d6a715c2e31989c003ebc2f7703038bb41e8dd97"
+  "chars": 22192,
+  "sha256": "0ebccdb6989aca424f5476d6576d6cce97c9e2089aac3e94990428ed4229f1f6"
  }
 }

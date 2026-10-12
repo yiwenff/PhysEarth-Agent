@@ -54,6 +54,10 @@ def _numeric(values):
     return [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]
 
 
+def _finite(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
 def _columns(payload):
     """Every drawable column of a stored result, keyed by name."""
     if payload.get("source") == "measured":
@@ -167,7 +171,18 @@ def resolve(spec, owner=None):
                 % (index, yname, handle, ", ".join(names))
             )
             continue
-        xs, ys = _numeric(columns[xname]), _numeric(columns[yname])
+        omitted = 0
+        if len(columns[xname]) == len(columns[yname]):
+            # Pair first, then drop pairs that are not finite numbers: a point the model
+            # refused (left as NaN) must not shift every later value onto the wrong x.
+            kept = [
+                (x, y) for x, y in zip(columns[xname], columns[yname])
+                if _finite(x) and _finite(y)
+            ]
+            omitted = len(columns[xname]) - len(kept)
+            xs, ys = [p[0] for p in kept], [p[1] for p in kept]
+        else:
+            xs, ys = _numeric(columns[xname]), _numeric(columns[yname])
         if len(xs) != len(ys) or not xs:
             problems.append(
                 "series %d: %s has %d numeric values and %s has %d, so they cannot be paired."
@@ -189,6 +204,7 @@ def resolve(spec, owner=None):
                 "y": [p[1] for p in pairs],
                 "x_name": xname,
                 "y_name": yname,
+                "omitted": omitted,
                 "source": _source(payload),
                 "origin": _origin(payload),
                 "units": payload.get("units") or {},

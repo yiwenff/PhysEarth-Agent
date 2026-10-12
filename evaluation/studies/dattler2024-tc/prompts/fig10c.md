@@ -1,0 +1,1 @@
+Reproduce Fig. 10c: the map of microwave grain size L_MW (19V) from the hybrid AMSR-2 + CFM + SMRT method over the Larsen C ice shelf on the 12.5 km AMSR-2 grid, for 27 October to 16 December 2013. State clearly whether you recomputed it or replotted published outputs.

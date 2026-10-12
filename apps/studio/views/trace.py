@@ -29,6 +29,7 @@ BADGES = {
     "tool_bypass_requested": ("badge--warn", "TOOLS DISABLED", "step-card--warn"),
     "tool_bypass_blocked": ("badge--block", "SAFE REFUSAL", "step-card--block"),
     "research_mode_selected": ("badge--ok", "RESEARCH MODE", "step-card--pass"),
+    "plan_review_agent": ("badge--model", "PLAN REVIEW", "step-card--tool"),
     "route": ("badge--ok", "ROUTE", "step-card--pass"),
 }
 
@@ -170,6 +171,26 @@ def _event_body(event, index):
         return "<div class='step-card__line'>%s: %s (%s).</div>" % (
             _e(labels.get(event.get("path"), event.get("path"))), _e(event.get("reason") or ""),
             _e(event.get("source") or ""),
+        )
+
+    if kind == "plan_review_agent":
+        issues = event.get("issues") or []
+        if event.get("verdict") == "unavailable":
+            return "<div class='step-card__line'>The plan review could not be made (%s); the plan went to you as it was.</div>" % _e(event.get("detail") or "")
+        if not issues:
+            return "<div class='step-card__line'>A second model call read the plan against the paper and found nothing to change.</div>"
+        return (
+            "<div class='step-card__line'>A second model call read the plan against the paper and asked "
+            "the agent for %d change(s).</div>%s" % (
+                len(issues),
+                "".join(
+                    "<div class='step-card__line'><b>%s</b> %s%s</div>" % (
+                        _e(item.get("kind", "")), _e(item.get("what", "")),
+                        " &rarr; %s" % _e(item["fix"]) if item.get("fix") else "",
+                    )
+                    for item in issues
+                ),
+            )
         )
 
     if kind == "tool_bypass_requested":

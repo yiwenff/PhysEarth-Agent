@@ -27,7 +27,7 @@ reference:
     frequency_ghz: 37.0
     thickness_m: 10.0
     density_kg_m3: 300.0
-    temperature_k: 256.0
+    temperature_k: 265.0
     radius_m: 0.0001
     stickiness: 0.5
     sweep_parameter: angle_deg
@@ -50,6 +50,9 @@ reference:
     tolerance_rmse: 1.0
     unit: dB
 notes: >-
+  Temperature is 265 K: the Figure 4 caption says 265 K and Section 3.1.2 says 256 K. The
+  plotted brightness temperatures reach 264 K, which a 256 K snowpack cannot emit, and SMRT
+  at 265 K reproduces the curves to 0.09 K RMSE (256 K misses by 9 K).
   The single field that separates this task from the passive one is `output`. A run that gets
   every snowpack property right and still returns brightness temperature scores zero on the
   observable the question asked for, which is the point of grading them separately.

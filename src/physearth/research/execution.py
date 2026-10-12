@@ -20,6 +20,7 @@ def execution_gaps(session):
     missing = []
     missing_ids = []
     current_failures = []
+    waived = []
     for wanted in planned:
         candidates = [
             (index, actual)
@@ -48,13 +49,23 @@ def execution_gaps(session):
                 }
             )
         else:
-            missing.append(wanted.get("label") or wanted.get("id") or wanted.get("model"))
-            missing_ids.append(wanted.get("id"))
-            current_failures.extend(
+            failures = [
                 item for item in failed
                 if item.get("run_id") == wanted.get("id")
                 and item.get("spec") == wanted.get("parameters")
-            )
+            ]
+            if failures and str(wanted.get("stage") or "main").strip().lower() == "diagnostic":
+                # A side check that failed is reported, not retried: it feeds no required figure, so it
+                # neither blocks the report nor sends a plan back for review.
+                waived.append({
+                    "run_id": wanted.get("id"),
+                    "label": wanted.get("label") or wanted.get("id") or wanted.get("model"),
+                    "error": str(failures[-1].get("error") or failures[-1].get("summary") or "")[:300],
+                })
+                continue
+            missing.append(wanted.get("label") or wanted.get("id") or wanted.get("model"))
+            missing_ids.append(wanted.get("id"))
+            current_failures.extend(failures)
     figures = [figure for figure in session.get("figures") or [] if not figure.get("preview")]
     charts = (project.get("plan") or {}).get("charts") or []
     selected_ids = list(project.get("selected_charts") or [])
@@ -178,6 +189,7 @@ def execution_gaps(session):
         "missing_runs": missing,
         "missing_run_ids": missing_ids,
         "failed_runs": current_failures,
+        "waived_runs": waived,
         "failed_run_ids": sorted(
             {item.get("run_id") for item in current_failures if item.get("run_id")}
         ),

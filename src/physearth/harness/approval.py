@@ -46,8 +46,18 @@ def mode(session):
 
 
 def set_mode(session, value):
-    gate(session)["mode"] = ALWAYS if value == ALWAYS else ASK
+    entry = gate(session)
+    entry["mode"] = ALWAYS if value == ALWAYS else ASK
+    if value != ALWAYS:
+        # Only an interface with a person behind it asks. Remember that, because approving a plan
+        # later switches model runs to "always" while a script's code still has to be read.
+        entry["interactive"] = True
     return mode(session)
+
+
+def person_present(session):
+    """True when an interface that can ask a person made this session, whatever its mode now."""
+    return bool(gate(session).get("interactive"))
 
 
 def required(session):

@@ -1,6 +1,6 @@
 # PhysEarth-Agent in Codex
 
-Two commands and a check. Everything the engine offers — up to 28 tools, the bundled CC-BY corpus,
+Two commands and a check. Everything the engine offers — up to 33 tools, the bundled CC-BY corpus,
 reference measurements, validation/QC/evidence and report lint — arrives through one MCP
 server; the skill in `.agents/skills/physearth/` is what tells Codex *how* to use it, and it is
 already in the repository, so there is nothing to install for it.

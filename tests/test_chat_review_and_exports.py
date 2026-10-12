@@ -353,7 +353,11 @@ def test_a_paper_is_read_once_and_kept_as_grounded_statements(state):
     ]
     record, cached = digest.digest(box, "smrt-v1", extract=_fake_extract(items))
     assert not cached and record["dropped"] == 2
-    assert [i["ref"] for i in record["items"]] == ["smrt-v1#08"]
+    # The model's statements are grounded in their sections; the paper's figure captions follow
+    # them verbatim, so a condition the caption states reaches the agent too.
+    assert [i["ref"] for i in record["items"] if not i["section"].startswith("fig")] == ["smrt-v1#08"]
+    captions = [i for i in record["items"] if i["section"].startswith("fig")]
+    assert captions and all(i["kind"] == "figure" and i["statement"].startswith("Caption of") for i in captions)
     called = []
     again, cached = digest.digest(box, "smrt-v1", extract=lambda *a: called.append(1))
     assert cached and not called and again is record
@@ -396,7 +400,8 @@ def test_the_brief_carries_the_paper_and_the_layout(state):
     assert "Figure-led report" in brief
     assert "frequency = 37 GHz" in brief or "frequency" in brief
     assert "read_research_guideline" in brief
-    assert "What the paper states" in exports.plan_document(box)
+    page = exports.plan_document(box)
+    assert "Paper evidence this plan cites" in page and "What the paper states" not in page
 
 
 
@@ -511,3 +516,21 @@ def test_a_parameter_asked_for_on_its_own_is_still_an_inversion():
     _result, review = _checked("SMRT", ["density_kg_m3"])
     assert review["unavailable_outputs"] == ["density_kg_m3"]
 
+
+@pytest.mark.parametrize("reference", [
+    "MEMLS (IBA, grain type 2, six-flux solver)",
+    "DMRT-QMS (DMRT QCA Mie)",
+])
+def test_another_model_described_with_an_smrt_theory_stays_unavailable(reference):
+    _result, review = _checked(reference, ["tb_v"])
+    assert [item["model"] for item in review["unavailable"]] == [reference]
+    assert not any(item.get("asked") == reference for item in review["resolved_names"])
+
+
+@pytest.mark.parametrize("reference", [
+    "Non-sticky hard spheres (DMRT QCA-CP)",
+    "SMRT v1.0 (paper implementation of the same six combinations)",
+])
+def test_an_smrt_legend_entry_still_resolves_to_smrt(reference):
+    _result, review = _checked(reference, ["tb_v"])
+    assert review["unavailable"] == [] and review["status"] == "ready"

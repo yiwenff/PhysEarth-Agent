@@ -14,15 +14,19 @@ import re
 from physearth import registry
 from physearth.research import sheet
 
-SOURCE_LABELS = {
-    "paper_explicit": "paper",
-    "paper_inferred": "derived",
-    "user_specified": "user",
-    "backend_default": "model default",
-    "model_assumption": "guessed",
+# The Studio's labels (`sheet.TAGS`), so a person sees the same word for the same value in the
+# plan sheet and in this document. `assumed` and `guessed` both store as a model assumption; the
+# difference is whether a reason is written down, which the Review note carries.
+SOURCE_LABELS = dict(sheet.TAGS)
+SOURCE_PROVENANCE = {
+    "extracted": "paper_explicit",
+    "derived": "paper_inferred",
+    "user": "user_specified",
+    "default": "backend_default",
+    "assumed": "model_assumption",
+    "guessed": "model_assumption",
 }
-SOURCE_PROVENANCE = {value: key for key, value in SOURCE_LABELS.items()}
-SOURCE_OPTIONS = ("paper", "derived", "user", "model default", "guessed")
+SOURCE_OPTIONS = tuple(SOURCE_PROVENANCE)
 _SWEEP_FIELDS = {"sweep_parameter", "sweep_start", "sweep_stop", "sweep_points"}
 _REVIEW_FIELDS = {"frequency_ghz", "temperature_k", "stickiness", "sweep_start", "sweep_points"}
 _FRIENDLY_PARAMETER_NAMES = {
@@ -89,29 +93,9 @@ def _same(values):
 
 
 def _source(entries, plan, model, name, runs):
+    """Source tag, evidence and note for one parameter: the Studio's own resolution."""
     entries = [item for item in entries if isinstance(item, dict)]
-    # Figure 3 explicitly names the theory/microstructure combinations. Keep
-    # those rows readable and paper-backed even when the resolved run mapping
-    # was stored as a baseline value without a copied evidence marker.
-    if name in {"electromagnetic_model", "microstructure_model"} and any(
-        "smrt-v1#fig03" in str(ref) or "smrt-v1#fig-fig03" in str(ref)
-        for ref in (plan.get("reference_sections") or ())
-    ):
-        return "paper", "smrt-v1#fig-fig03", "Configuration named in Figure 3."
-    if entries:
-        labels = [SOURCE_LABELS.get(str(item.get("provenance_class") or ""), "guessed") for item in entries]
-        source = labels[0] if len(set(labels)) == 1 else "guessed"
-        evidence = next((str(item.get("evidence_ref")) for item in entries if item.get("evidence_ref")), "")
-        notes = "; ".join(str(item.get("rationale")) for item in entries if item.get("rationale"))
-        return source, evidence, notes
-    if runs and all(name in (run.get("defaulted_parameters") or ()) for run in runs):
-        return "model default", "", "The registered model supplied this default."
-    provenance = (plan.get("condition_provenance") or {}).get(name)
-    if provenance:
-        text = str(provenance)
-        if "#" in text or text.startswith(("paper", "figure", "section")):
-            return "paper", text, ""
-    return "guessed", "", "No paper or user source is recorded."
+    return sheet._source(plan, {(model, name): entries} if entries else {}, model, name, runs)
 
 
 def _value_type(value, spec):
@@ -214,6 +198,16 @@ def parameter_rows(project):
     return rows
 
 
+def _phase_line(phase):
+    """The phase with what it asks of the reviewer, so a finished plan never asks for approval."""
+    phase = phase or "plan_review"
+    if phase in ("approved", "completed"):
+        return "🟢 `%s` — approved" % phase
+    if phase == "plan_approved":
+        return "🟠 `%s` — plan approved, formal execution not yet approved" % phase
+    return "🟠 `%s` — approval required" % phase
+
+
 def _cell(value):
     return str(value if value not in (None, "") else "-").replace("|", "\\|").replace("\n", " ").strip()
 
@@ -228,7 +222,7 @@ def markdown(project, session_id=None):
     attention = [
         row for row in rows
         if row["model_input"] in _REVIEW_FIELDS
-        or (row["source"] == "guessed" and row["model_input"] in _REVIEW_FIELDS)
+        or (row["source"] in sheet.DECIDE and row["model_input"] in _REVIEW_FIELDS)
         or "assumption" in str(row.get("notes") or "").lower()
         or "proxy" in str(row.get("notes") or "").lower()
         or ("not stated" in str(row.get("notes") or "").lower() and row["model_input"] in _REVIEW_FIELDS)
@@ -247,20 +241,20 @@ def markdown(project, session_id=None):
         "</details>",
         "",
         "> **Edit only:** `Editable value`, `Source`, `Evidence`, and `Review note`. Keep `ID`, `Parameter`, `Unit`, and `Model range` unchanged.",
-        "> Source is a closed set: `paper`, `derived`, `user`, `model default`, or `guessed`.",
+        "> Source is a closed set: `extracted`, `derived`, `user`, `default`, `assumed`, or `guessed`.",
         "> Submit the edited document for validation; edits create a new plan version and require human approval.",
         "",
         "## Review at a glance",
         "",
         "| Item | Status |",
         "| --- | --- |",
-        "| Phase | 🟠 `%s` — approval required |" % (project.get("phase") or "plan_review"),
+        "| Phase | %s |" % _phase_line(project.get("phase")),
         "| Plan version | `%d` |" % version,
         "| Research question | %s |" % _cell(plan.get("question") or project.get("question") or "-"),
         "",
         "## Attention before approval",
         "",
-        "Legend: 🔴 confirm an assumption or guessed value · 🟠 check a backend default · 🟢 supported by the paper.",
+        "Legend: 🔴 confirm an assumed or guessed value · 🟠 check a model default · 🟢 extracted from the paper.",
         "",
     ]
     if attention:
@@ -269,7 +263,7 @@ def markdown(project, session_id=None):
             "| --- | --- | --- | --- | --- |",
         ]
         for row in attention:
-            priority = "🔴 Confirm" if row["source"] == "guessed" or "assumption" in str(row.get("notes") or "").lower() or "proxy" in str(row.get("notes") or "").lower() else "🟠 Check"
+            priority = "🔴 Confirm" if row["source"] in sheet.DECIDE or "assumption" in str(row.get("notes") or "").lower() or "proxy" in str(row.get("notes") or "").lower() else "🟠 Check"
             reason = row.get("notes") or "The model supplies this value; verify it against the paper or user intent."
             lines.append("| %s | %s | %s | %s | %s |" % (
                 priority, _cell(row["row_id"]), _cell(row["parameter"]), _cell(row["value"]), _cell(reason)
@@ -311,13 +305,6 @@ def markdown(project, session_id=None):
             _cell("run:%s" % run.get("id")), _cell(run.get("label") or run.get("id")),
             _cell(run.get("model")), _cell(run.get("stage") or ""),
             _cell(json.dumps(_params(run), ensure_ascii=False, sort_keys=True)), _cell(", ".join(feeds) or "-"),
-        ))
-    lines += ["", "## Figures", "", "| Row ID | Figure | X | Y | Required | Purpose |", "| --- | --- | --- | --- | --- | --- |"]
-    for chart in charts:
-        lines.append("| %s | %s | %s | %s | %s | %s |" % (
-            _cell("chart:%s" % chart.get("id")), _cell(chart.get("label") or chart.get("id")),
-            _cell(chart.get("x")), _cell(", ".join(chart.get("ys") or [chart.get("y")]) ),
-            _cell("yes" if chart.get("required", True) else "no"), _cell(chart.get("purpose") or ""),
         ))
     lines += ["", "## Assumptions and limitations", ""]
     for label, key in (("Assumption", "assumptions"), ("Limitation", "limitations"), ("Success criterion", "success_criteria")):
@@ -439,17 +426,23 @@ def changes(project, document):
         if all(normalized[key] == str(old_display[key]) for key in ("Editable value", "Source", "Evidence", "Review note")):
             continue
         source = normalized["Source"].lower()
-        if source not in SOURCE_PROVENANCE:
+        if source in SOURCE_PROVENANCE:
+            provenance = SOURCE_PROVENANCE[source]
+        elif source == "mixed" and str(old["source"]).lower() == "mixed":
+            provenance = None  # differs by run; the stored entries keep their own
+        else:
             raise ValueError("Source for %s must be one of: %s." % (row_id, ", ".join(SOURCE_OPTIONS)))
         typed = _coerce(normalized["Editable value"], {**old, "_value_type": old["value_type"]})
-        mapping_patches.append({
+        patch_item = {
             "model": old["model"],
             "model_input": old["model_input"],
             "mapped_value": typed,
-            "provenance_class": SOURCE_PROVENANCE[source],
             "evidence_ref": normalized["Evidence"] if normalized["Evidence"] != "-" else "",
             "rationale": normalized["Review note"] if normalized["Review note"] != "-" else "",
-        })
+        }
+        if provenance:
+            patch_item["provenance_class"] = provenance
+        mapping_patches.append(patch_item)
         if normalized["Editable value"] != str(old["value"]):
             for run_id in old["run_ids"]:
                 run_patches.setdefault(run_id, {"id": run_id, "parameters": {}})

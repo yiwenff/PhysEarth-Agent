@@ -9,7 +9,7 @@ import time
 from physearth import config, harness, prompt, research, tools
 from physearth import session as session_state
 from physearth.agent import completion as _completion
-from physearth.agent import router
+from physearth.agent import plan_review, router
 from physearth.research import operations
 from physearth.agent.catalogue import CATALOGUE, new_session, new_state, resolve_model
 from physearth.agent.completion import _Completion, _tool_arguments
@@ -301,6 +301,65 @@ def _scripts_used_up(session):
     return analysis.over_budget(session)
 
 
+PLAN_REVIEW_TIMEOUT_S = 90
+
+
+def _review_plan(session, model_id):
+    """One call, reasoning off, that reads the plan like a person would. None if it cannot be made."""
+
+    def ask():
+        client = _completion._client()
+        brief = plan_review.brief(session)
+        try:
+            from physearth.tools import literature
+
+            images = literature.source_figure_images(session, plan_review.figure_refs(session))
+        except Exception:  # the figure is a help to the reviewer, never a reason to skip it
+            images = []
+
+        def call(content):
+            chunks = client.chat.completions.create(
+                model=model_id,
+                messages=[
+                    {"role": "system", "content": plan_review.PROMPT},
+                    {"role": "user", "content": content},
+                ],
+                max_tokens=700,
+                temperature=0,
+                stream=True,
+                timeout=PLAN_REVIEW_TIMEOUT_S,
+                extra_body=_thinking_off(),
+            )
+            text = []
+            for chunk in chunks:
+                for choice in getattr(chunk, "choices", None) or ():
+                    piece = getattr(getattr(choice, "delta", None), "content", None)
+                    if piece:
+                        text.append(piece)
+            return "".join(text)
+
+        if not images:
+            return call(brief)
+        note = "\n\nThe paper's figure image%s attached: %s." % (
+            "s are" if len(images) > 1 else " is", ", ".join(ref for ref, _url in images))
+        try:
+            return call([{"type": "text", "text": brief + note}]
+                        + [{"type": "image_url", "image_url": {"url": url}} for _ref, url in images])
+        except Exception:  # a model path that takes no images still reviews the text
+            session["plan_review_images"] = "not accepted"
+            return call(brief)
+
+    try:
+        raw = _call_watched(session, ask)
+    except Exception as exc:  # the review is advice; a failure never holds the plan back
+        session["plan_review_note"] = "call failed: %s" % type(exc).__name__
+        return None
+    found = plan_review.parse(raw)
+    if found is None:
+        session["plan_review_note"] = "unreadable reply: %r" % str(raw)[:160]
+    return found
+
+
 def _classify_turn(session, question, model_id):
     """One short call, reasoning off, that names the kind of turn. None if it was stopped."""
     client = _completion._client()
@@ -349,6 +408,9 @@ def stream(question, history=None, model=None, session=None, switches=None):
     held = approval.take(session)
     resumable = bool(held and held["verdict"] and held["resume"])
     session["turns"] = session.get("turns", 0) + (0 if resumable else 1)
+    if not resumable:
+        # What the person has said, kept so a value can be traced to their words or not.
+        session.setdefault("user_messages", []).append(str(question or "")[:4000])
     audit.bind(session, turn=session["turns"])
     audit.emit(
         "agent_turn_started",
@@ -566,7 +628,7 @@ def stream(question, history=None, model=None, session=None, switches=None):
             attempt += 1
             started = time.perf_counter()
             candidate = _Completion()
-            offered_specs = tools.specs(state["switches"], state.get("path"))
+            offered_specs = tools.specs(state["switches"], state.get("path"), tools.phase(session))
             offered_names = {item["function"]["name"] for item in offered_specs}
             if requested_tool and requested_tool not in offered_names:
                 events.append(
@@ -932,9 +994,19 @@ def stream(question, history=None, model=None, session=None, switches=None):
                     )
                     yield answer, events, state
                 elif (
-                    (name == "run_model" and not session.get("research_required"))
-                    or (name == "run_analysis_script" and not _scripts_used_up(session))
-                ) and approval.required(session):
+                    (
+                        name == "run_model"
+                        and not session.get("research_required")
+                        and approval.required(session)
+                    )
+                    # A script is approved by reading its code. Approving the plan switched the
+                    # model runs to "always"; it did not read any code, so a person is still asked.
+                    or (
+                        name == "run_analysis_script"
+                        and not _scripts_used_up(session)
+                        and approval.person_present(session)
+                    )
+                ):
                     # Asking ends the turn rather than holding a worker for an answer. The
                     # request carries what the turn needs to continue from this call.
                     approval.request(
@@ -971,6 +1043,7 @@ def stream(question, history=None, model=None, session=None, switches=None):
                             owner=session["id"],
                             switches_in=state["switches"],
                             session=session,
+                            phase=tools.phase(session),
                         ),
                     )
                 )
@@ -1024,6 +1097,7 @@ def stream(question, history=None, model=None, session=None, switches=None):
                 if name == "plot_planned_chart" and result["status"] == "success":
                     review_attempts.pop("research_gate:figure_required", None)
 
+                plan_feedback = None
                 human_wait = (
                     name == "research_plan"
                     and result["status"] == "needs_input"
@@ -1188,10 +1262,41 @@ def stream(question, history=None, model=None, session=None, switches=None):
                     and ready.get("phase") == "plan_review"
                     and not (ready.get("plan") or {}).get("resource_gate")
                 ):
-                    answer = research.review_guidance(ready)
-                    state["phase"] = "done"
-                    yield answer, events, state
-                    return
+                    # One agent review of the plan, once per session, before a person reads it.
+                    if plan_review.enabled() and not session.get("plan_reviewed"):
+                        session["plan_reviewed"] = True
+                        started_review = time.perf_counter()
+                        findings = _review_plan(session, state["model"])
+                        if findings is None:
+                            events.append(
+                                _event(
+                                    "plan_review_agent",
+                                    verdict="unavailable",
+                                    issues=[],
+                                    detail=session.get("plan_review_note") or "no reply",
+                                    elapsed_s=round(time.perf_counter() - started_review, 2),
+                                )
+                            )
+                        else:
+                            events.append(
+                                _event(
+                                    "plan_review_agent",
+                                    verdict=findings["verdict"],
+                                    issues=findings["issues"],
+                                    elapsed_s=round(time.perf_counter() - started_review, 2),
+                                )
+                            )
+                            ready["agent_review"] = findings
+                            if findings["verdict"] == "revise":
+                                plan_feedback = findings
+                                # Heard is not applied: the next call must be a plan call, which
+                                # either carries the changes or says there are none.
+                                forced_tool_name = "research_plan"
+                    if plan_feedback is None:
+                        answer = research.review_guidance(ready)
+                        state["phase"] = "done"
+                        yield answer, events, state
+                        return
 
                 if (
                     name == "run_planned_model"
@@ -1274,6 +1379,8 @@ def stream(question, history=None, model=None, session=None, switches=None):
                 payload = {k: v for k, v in result.items() if k not in ("qc", "ui")}
                 if name == "research_plan":
                     payload = _plan_result_for_model(payload)
+                    if plan_feedback is not None:
+                        payload.setdefault("data", {})["reviewer"] = plan_review.feedback(plan_feedback)
                 tool_content = json.dumps(payload, ensure_ascii=False)
                 # A figure inspection carries one bounded image part for a configured
                 # multimodal endpoint. Keep the base64 out of the tool transcript and send
@@ -1825,8 +1932,40 @@ def stream(question, history=None, model=None, session=None, switches=None):
                     detail=report_warning,
                 )
             )
+        if (
+            session.get("research_required")
+            and research.lacks_narrative(session, answer)
+            and review_attempts.get("report_narrative", 0) < 2
+        ):
+            review_attempts["report_narrative"] = review_attempts.get("report_narrative", 0) + 1
+            events.append(
+                _event(
+                    "harness_block",
+                    rule="report_narrative",
+                    detail="The report has figures but no written result or conclusion.",
+                    intervention=review_attempts["report_narrative"],
+                )
+            )
+            messages.append({"role": "assistant", "content": completion.content or ""})
+            messages.append({
+                "role": "user",
+                "content": "Your reply has no written report. Write it now: open with the result and "
+                "conclusion read from the figure, compare with the paper where it states a value, "
+                "label every parameter you set by its recorded source, and state limitations.",
+            })
+            segments = []
+            answer = ""
+            yield answer, events, state
+            continue
         # Report completeness is advisory. Evidence, citation, abstract-depth and budget
         # checks remain blocking and are handled by the strict final harness below.
+        for finding in harness.advisory_findings(answer, state):
+            detail = finding.get("reason") or str(harness.correction(finding))[:600]
+            note = "%s: %s" % (finding["rule"], detail)
+            noted = session.setdefault("report_warnings", [])
+            if note not in noted:
+                noted.append(note)
+                events.append(_event("harness_warning", rule=finding["rule"], detail=detail))
         check, correction = harness.review_final(answer, state)
         if correction and check.get("rule") == "citation_integrity":
             correction = _allowed_marker_correction(state, check.get("unresolved") or [])

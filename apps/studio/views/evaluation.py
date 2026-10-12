@@ -1589,14 +1589,14 @@ def guided_demo():
 def guided_demos():
     """Load the beginner-facing paper cards from evaluation-only data files."""
     cards = []
-    # Keep Q2's task and evidence in the repository, but hide its dashboard card while
-    # offline evaluation is intentionally bounded to one question.
-    for filename in ("smrt-q1.yaml",):
+    # Q1 is the evaluated question; Figure 6 shows a reproduction the registry can only
+    # partly support. Figure 7 is a future-direction card, not a runnable demo.
+    for filename in ("smrt-q1.yaml", "smrt-fig6.yaml"):
         path = DEMOS / filename
         if not path.is_file():
             continue
         overlay = dict(_load_yaml(path))
-        task = canonical_task(overlay.get("task_id"))
+        task = _demo_task(overlay.get("task_id"))
         if not task:
             continue
         case = {**task, **_guided_task_fields(task), **overlay}
@@ -1616,6 +1616,68 @@ def guided_demos():
 def guided_demo_cases():
     """Return the beginner-facing guided reproduction cards."""
     return [dict(case) for case in guided_demos()]
+
+
+def _demo_task(task_id):
+    """The task a demo card stands on: a tier-2 question, or a tier-1 paper-figure task.
+
+    Tier 2 holds exactly the evaluated matrix and model grid, so a demo of another paper
+    figure points at its tier-1 task instead of adding a question to the evaluation.
+    """
+    task = canonical_task(task_id)
+    if task:
+        return task
+    wanted = str(task_id or "").strip()
+    for item in _load_tasks("tier1"):
+        if isinstance(item, dict) and wanted and str(item.get("id")) == wanted:
+            return dict(item)
+    return None
+
+
+@lru_cache(maxsize=1)
+def future_directions():
+    """Cards for reproductions the agent cannot do yet, and what would make them possible."""
+    cards = []
+    for path in sorted(DEMOS.glob("*.yaml")):
+        overlay = dict(_load_yaml(path))
+        if overlay.get("kind") != "future_direction":
+            continue
+        card = knowledge.card(overlay.get("paper")) or {}
+        cards.append({
+            **overlay,
+            "paper_title": card.get("title") or overlay.get("paper") or "",
+            "paper_url": card.get("url") or "",
+        })
+    return tuple(cards)
+
+
+def future_card(case):
+    """A reproduction the agent cannot support yet, stated as what it can and cannot do."""
+    items = lambda values: "".join("<li>%s</li>" % _e(v) for v in values or ())
+    source = (
+        "<a href='%s' target='_blank' rel='noopener'>Read the paper</a>" % _e(case["paper_url"])
+        if case.get("paper_url") else ""
+    )
+    return (
+        "<article class='eval-demo-card eval-demo-card--future'>"
+        "<div class='eval-demo-card__eyebrow'>%s</div><h3>%s</h3><p>%s</p>%s"
+        "<div class='eval-demo-card__context'><p><b>Paper:</b> %s, Section %s</p>"
+        "<p><b>The agent can</b></p><ul>%s</ul>"
+        "<p><b>The agent cannot</b></p><ul>%s</ul></div>"
+        "<div class='eval-demo-card__expect'><span>NEEDED</span>%s</div>"
+        "%s"
+        "<details class='eval-demo-card__workflow'><summary>Offline evidence</summary><p>%s</p></details>"
+        "</article>"
+        % (
+            _e(case.get("eyebrow", "")), _e(case.get("title", "")), _e(case.get("summary", "")),
+            source, _e(case.get("paper_title", "")), _e(case.get("paper_section", "")),
+            items(case.get("can_do")), items(case.get("cannot_do")),
+            _e(case.get("needed", "")),
+            "<div class='eval-demo-card__expect'><span>EXPECTED</span>%s</div>"
+            % _e(case["expected"]) if case.get("expected") else "",
+            _e(case.get("evidence", "")),
+        )
+    )
 
 
 def _figure_target_label(item):

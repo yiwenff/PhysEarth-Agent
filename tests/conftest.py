@@ -23,3 +23,4 @@ for _name in (
 # The router's model call would consume a scripted client's first reply. The suite tests the
 # rules; test_router.py turns the model call on for the cases that exercise it.
 os.environ["PHYSEARTH_ROUTER"] = "rules"
+os.environ["PHYSEARTH_PLAN_REVIEW"] = "off"

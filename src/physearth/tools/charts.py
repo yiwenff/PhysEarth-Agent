@@ -75,6 +75,7 @@ def plot(
             "x": s["x_name"],
             "y": s["y_name"],
             "y_unit": (s.get("units") or {}).get(s["y_name"], ""),
+            "omitted_points": s.get("omitted", 0),
         }
         for s in resolved
     ]
@@ -95,6 +96,13 @@ def plot(
         len(resolved),
         sum(len(s["x"]) for s in resolved),
     )
+    left_out = [(s["label"], s.get("omitted", 0)) for s in resolved if s.get("omitted")]
+    if left_out:
+        summary += (
+            " %s: the model refused these points as unphysical, so the curve stops there. "
+            "Say so when describing it; the gap is a result, not missing data."
+            % "; ".join("%d point(s) left out of %s" % (n, label) for label, n in left_out)
+        )
     if metrics is not None:
         values, refusals = plotting.agreement(resolved, metrics)
         if refusals:

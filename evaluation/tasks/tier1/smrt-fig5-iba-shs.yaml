@@ -30,7 +30,7 @@ reference:
     angle_deg: 55.0
     thickness_m: 10.0
     density_kg_m3: 300.0
-    temperature_k: 256.0
+    temperature_k: 265.0
     stickiness: 0.5
     sweep_parameter: radius_m
     sweep_start: 5.0e-05
@@ -51,6 +51,9 @@ reference:
     tolerance_rmse: 5.0
     unit: K
 notes: >-
+  Temperature is 265 K: the Figure 4 caption says 265 K and Section 3.1.2 says 256 K. The
+  plotted brightness temperatures reach 264 K, which a 256 K snowpack cannot emit, and SMRT
+  at 265 K reproduces the curves to 0.09 K RMSE (256 K misses by 9 K).
   This is the one task where the legal combination rules point the other way from the obvious
   reading: IBA with sticky hard spheres is allowed, while DMRT with anything but sticky hard
   spheres is not. A run that reaches for DMRT here is answering a different question.

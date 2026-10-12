@@ -185,9 +185,19 @@ def merge_items(retained, supplied, keys, complete=()):
         not supplied
         or not isinstance(retained, list)
         or not all(isinstance(item, dict) and all(identity(item)) for item in supplied)
-        or all(_is_complete(item, complete) and "remove" not in item for item in supplied)
     ):
         return supplied
+    if all(_is_complete(item, complete) and "remove" not in item for item in supplied):
+        # A short list that names only items already retained is a repair of those items,
+        # not a request to delete every other one: a traced run replaced ten parameter
+        # mappings with the one it was fixing, and the next refusal was about whichever
+        # entry the rebuild put in its place, thirteen times over. Dropping an item takes
+        # an explicit {"id": ..., "remove": true}; a list that adds an identity, or names
+        # every retained one, is still the whole list.
+        known = {identity(item) for item in retained if isinstance(item, dict)}
+        names_only_known = all(identity(item) in known for item in supplied)
+        if not (names_only_known and len(supplied) < len(known)):
+            return supplied
     merged = [dict(item) if isinstance(item, dict) else item for item in retained]
     index = {
         identity(item): position for position, item in enumerate(merged) if isinstance(item, dict)

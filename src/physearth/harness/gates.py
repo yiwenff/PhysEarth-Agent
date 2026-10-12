@@ -322,7 +322,15 @@ def correction(check):
     }[check["rule"]](check)
 
 
+# Rules that report a gap in a report's wording or layout, not a claim that cannot be believed:
+# the value the question asked for, the tagged appendix, the parameter block matching the plan.
+# They are shown beside the report and do not send it back for a rewrite. Evidence, citation
+# integrity and abstract depth still do, because they decide whether a claim can be trusted.
+ADVISORY_RULES = frozenset({"asked_value", "required_appendix", "provenance_consistency"})
+
+
 def review_final(text, state):
+    """The first check that must send the answer back, with its correction; else the citation check."""
     if not switches.resolve(state.get("switches"))["harness"]:
         return (
             {"rule": "citation_integrity", "passed": True, "markers": find_markers(text), "off": True},
@@ -330,6 +338,16 @@ def review_final(text, state):
         )
     checks = final_checks(text, state)
     for check in checks:
-        if not check["passed"]:
+        if not check["passed"] and check["rule"] not in ADVISORY_RULES:
             return check, correction(check)
     return checks[1], None
+
+
+def advisory_findings(text, state):
+    """The advisory checks the answer fails: noted with the report, never a reason to rewrite it."""
+    if not switches.resolve(state.get("switches"))["harness"]:
+        return []
+    return [
+        check for check in final_checks(text, state)
+        if not check["passed"] and check["rule"] in ADVISORY_RULES
+    ]

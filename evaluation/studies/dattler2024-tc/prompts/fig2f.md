@@ -1,0 +1,1 @@
+Reproduce Fig. 2f: 19V and 19H brightness temperature at Dome C (75.10 S, 123.35 E) for 1 January 2014, with the temperature and density profile from the Community Firn Model, grain size fixed at 0.25 mm, and the density perturbed by a percentage multiplied by the air volume fraction.

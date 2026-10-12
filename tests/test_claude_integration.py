@@ -129,6 +129,18 @@ def test_the_skill_is_the_same_one_the_codex_plugin_ships():
     sibling = ROOT / ".agents" / "skills" / "physearth" / "SKILL.md"
     if sibling.is_file():
         assert text == sibling.read_text()
+        # The references drift the same way the skill does: a tool table that lags the server is
+        # a model that does not know a tool exists. Every copy carries the same files.
+        reference_dirs = (
+            ROOT / ".agents" / "skills" / "physearth" / "references",
+            ROOT / "integrations" / "codex" / "physearth" / "skills" / "physearth" / "references",
+        )
+        for name in ("tools.md", "troubleshooting.md"):
+            ours = (SKILL.parent / "references" / name).read_text()
+            for other in reference_dirs:
+                assert ours == (other / name).read_text(), f"{name} differs from {other}"
+        codex_skill = ROOT / "integrations" / "codex" / "physearth" / "skills" / "physearth"
+        assert text == (codex_skill / "SKILL.md").read_text()
     for reference in re.findall(r"references/[a-z_-]+\.md", text):
         assert (SKILL.parent / reference).is_file(), reference
 

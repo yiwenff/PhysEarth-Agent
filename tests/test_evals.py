@@ -8,7 +8,8 @@ def test_guided_dashboard_is_bounded_to_q1_for_offline_testing():
     cases = evals.guided_demo_cases()
     q1_card = evals.demo_card(cases[0])
 
-    assert len(cases) == 1
+    # Q1 is the evaluated question; Figure 6 is the partial-support demo.
+    assert [case["id"] for case in cases] == ["smrt-q1-guided", "smrt-fig6-guided"]
     assert cases[0]["id"] == "smrt-q1-guided"
     assert cases[0]["button_label"] == "Start guided Q1 reproduction"
     assert "doi.org/10.5194/gmd-11-2763-2018" in q1_card
@@ -163,10 +164,29 @@ def test_gradio_exposes_evaluation_upload_and_agent_tabs_and_demo_prefill_handle
     assert workflow_css and "font-size: 14px" in workflow_css.group("body")
     assert len(app.basic_evaluation_cases) == 3
     assert len(app.evaluation_cases) == 4
-    assert len(app.guided_evaluation_cases) == 1
+    assert len(app.guided_evaluation_cases) == 2
     demo_handlers = [
         dependency
         for dependency in app.demo.fns.values()
         if getattr(getattr(dependency, "fn", None), "__name__", "") == "<lambda>"
     ]
     assert len(demo_handlers) >= 4
+
+
+def test_the_partial_support_demo_names_what_it_cannot_run():
+    case = evals.guided_demo_cases()[1]
+    card = evals.demo_card(case)
+    assert case["task_id"] == "t1-smrt-fig6-memls-iba"
+    assert case["question"].startswith("Reproduce Figure 6: Comparison with MEMLS-IBA")
+    assert "10.5194/gmd-11-2763-2018" in case["question"]
+    assert "Unavailable external models:</b> MEMLS" in card
+
+
+def test_the_future_direction_card_says_what_the_agent_cannot_do():
+    cards = evals.future_directions()
+    assert [c["id"] for c in cards] == ["smrt-fig7-future"]
+    html = evals.future_card(cards[0])
+    assert "The agent cannot" in html and "NEEDED" in html
+    assert "Try in Live Agent" not in html and "<button" not in html
+    # A future direction is not a guided demo, and adds no question to the evaluation.
+    assert "smrt-fig7-future" not in [c["id"] for c in evals.guided_demo_cases()]

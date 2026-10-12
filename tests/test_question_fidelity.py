@@ -86,9 +86,11 @@ def test_the_user_question_decides_the_axis_not_the_restated_one():
         sweep_parameter="frequency_ghz", sweep_start=10, sweep_stop=40
     )
     plan["charts"] = [{"id": "density", "label": "f", "x": "frequency_ghz", "y": "ks_per_m"}]
-    refused = tools.call("research_plan", plan, session=box)
-    assert refused["status"] == "terminal_error"
-    assert "x=density_kg_m3" in refused["summary"]
+    result = tools.call("research_plan", plan, session=box)
+    # The plan is made, with the mismatch between the question's axis and the chart's listed
+    # for the reviewer.
+    assert result["status"] == "needs_input", result["summary"]
+    assert "x=density_kg_m3" in str(result["data"]["plan"]["validation_warnings"])
 
 
 def test_a_comparison_the_user_asked_for_survives_a_restated_question():

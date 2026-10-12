@@ -70,13 +70,21 @@ A reproduction plan is refused until these are in the session, in this order.
    outputs and parameter combinations are supported, what is unavailable here, which paper
    reference models are required and which result will be reproduced. Record it with
    research_capability_check, one target per source figure, from what list_models,
-   read_model_instruction and the opened evidence returned. If anything required is
-   unavailable, list Supported, Unavailable and Not comparable components, ask the user
-   whether to plan a partial reproduction, and only after explicit confirmation call
+   read_model_instruction and the opened evidence returned. A target is what the source
+   figure plots, as outputs a registered model declares: its axes and curves. What the
+   question asks you to conclude from the figure (a range, a slope, a ratio, where curves
+   agree) is not a target; answer it in the report from the finished runs, with
+   run_analysis_script if it needs a calculation. If a reference model is not registered,
+   list Supported, Unavailable and Not comparable components, ask the user whether to plan
+   a partial reproduction, and only after explicit confirmation call
    research_capability_check(action=confirm_partial).
 3. **Mapping.** Translate each paper concept you set into one entry for one exact registered
    model input, named as list_models returns it; never write a catch-all entry such as
-   "remaining parameters" or "defaults". Mark each entry paper_explicit, paper_inferred,
+   "remaining parameters" or "defaults". When the paper gives one condition twice with
+   different values (in the text and in a figure caption, say), use the figure caption's, which
+   is what the figure was made with, and record the other as a discrepancy in the assumptions;
+   a brightness temperature cannot exceed the snow temperature, so a temperature below the
+   values the figure plots is wrong. Mark each entry paper_explicit, paper_inferred,
    user_specified, model_assumption or backend_default, give its confidence as high, medium
    or low, and attach the opened evidence reference when the value comes from the paper.
    Inputs you do not set take the declared default and are listed as backend_default at

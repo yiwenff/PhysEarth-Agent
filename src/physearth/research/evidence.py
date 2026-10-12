@@ -365,7 +365,7 @@ def _runs_depend_on_depth(entry, model, runs):
 def _semi_infinite_problems(session, parameter_mapping, reproduction_targets, runs=None):
     """A layer left at its small default where the paper states a semi-infinite medium.
 
-    The card says a value far above a few metres stands in for such a medium; a default does not.
+    The card says a value past the depth where the result stops changing stands in for such a medium; a default does not.
     The number is the card's, the statement is the paper's, and the plan has to join them.
     """
     figures = claims.target_figures(reproduction_targets)
@@ -392,11 +392,12 @@ def _semi_infinite_problems(session, parameter_mapping, reproduction_targets, ru
             return []
         problems.append({
             "field": "parameter_mapping[%d].mapped_value" % index,
+            "physical": True,
             "source": source,
             "actual": value,
-            "expected": "a value far above a few metres, as a stand-in for the semi-infinite medium %s states" % source,
+            "expected": "a value past the depth where the result stops changing, as a stand-in for the semi-infinite medium %s states" % source,
             "repair": "%s states a semi-infinite medium, and %s = %s is not one: the model card says a "
-            "value far above a few metres stands in for it. Set %s to such a value in the runs and "
+            "value past the depth where the result stops changing stands in for it. Set %s to such a value in the runs and "
             "map it as model_assumption with evidence_ref %s, saying in the rationale that it is a "
             "stand-in." % (source, name, value, name, source),
         })

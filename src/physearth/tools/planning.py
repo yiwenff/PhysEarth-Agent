@@ -216,7 +216,12 @@ def research_plan(
         missing_instructions = []
         for model_name in model_names:
             entry, _canonical = registry.resolve(model_name, _session)
-            instruction = model_guidelines.read(entry.name, entry.card, _session) if entry else None
+            if entry is None:
+                # Not registered, so there is no instruction to read and nothing to inspect. The
+                # capability review has already reported it unavailable; asking for its
+                # instruction only sends the agent to look up a model that does not exist.
+                continue
+            instruction = model_guidelines.read(entry.name, entry.card, _session)
             version = instruction.get("version", "1.0") if instruction else "?"
             key = "%s@%s" % (model_name, version)
             inspected_key = "%s@%s" % (model_name, entry.card.get("version") if entry else "?")

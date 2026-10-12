@@ -450,6 +450,18 @@ def research_capability_check(
                 unavailable_outputs_text,
             )
         )
+    scripted = report.get("scripted_operations") or []
+    if scripted:
+        summary += (
+            "\n\n**Computed by script, not a model output:** %s. Plan the runs and the figure from "
+            "what the registered models output. After the runs finish, compute these with "
+            "run_analysis_script (the person reads the code before it runs) and say in the report "
+            "which step was a script."
+            % "; ".join(
+                (item.get("details") or {}).get("find") or item.get("asked_as") or item.get("label")
+                for item in scripted
+            )
+        )
     if resource_gaps:
         return {
             "status": "needs_input",
@@ -792,6 +804,33 @@ def inspect_paper_figure(paper, figure_id, focus="", _session=None):
         inspection_note,
     )
     return _ok(summary, data, citations=[reference])
+
+
+def source_figure_images(session, refs, limit=3):
+    """[(ref, data URL)] for the paper figures a plan reproduces, for a reviewer that can look.
+
+    refs are source ids such as "smrt-v1#fig06". A figure with no extracted image, a file over
+    the size the model path takes, or vision switched off is left out; nothing is invented.
+    """
+    if not _vision_enabled():
+        return []
+    found = []
+    for ref in refs:
+        paper, _, figure_id = str(ref or "").partition("#")
+        item = live.card(session, paper.strip()) if paper else None
+        figure = _paper_figure(item, figure_id) if item else None
+        if not figure:
+            continue
+        raw = figure.get("asset_bytes")
+        if raw is None:
+            raw, _path = _trusted_asset_bytes(item, figure.get("asset_path") or figure.get("asset_uri"))
+        if not raw or len(raw) > 2_000_000:
+            continue
+        mime = mimetypes.guess_type("figure.%s" % (figure.get("asset_format") or "png"))[0] or "image/png"
+        found.append((str(ref), "data:%s;base64,%s" % (mime, base64.b64encode(raw).decode("ascii"))))
+        if len(found) >= limit:
+            break
+    return found
 
 
 def _vision_enabled():

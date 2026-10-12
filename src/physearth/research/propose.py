@@ -1,6 +1,7 @@
 """Turning a model's proposed plan into one the harness will accept."""
 
 import copy
+import re
 
 from physearth.research import evidence
 from physearth.research.charts import (
@@ -15,7 +16,7 @@ from physearth.research.charts import (
 from physearth.research.common import _clean_list, _fail, _needs, _public
 from physearth.research.coverage import _target_coverage
 from physearth.research.evidence import _evidence_plan_problems, _evidence_problem_summary
-from physearth.research.mapping import _is_paper_context_problem, _repair_item
+from physearth.research.mapping import _is_paper_context_problem, _repair_item, people_said
 from physearth.research.metadata import _repair_reproduction_metadata
 from physearth.research.normalise import (
     _clean_charts,
@@ -61,6 +62,82 @@ def _refusal(refusals, automatic_repairs):
         )
     data["automatic_repairs"] = automatic_repairs
     return _fail(summary, data)
+
+
+_NUMBER = re.compile(r"(?<![\w.])[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+_UNIT_SCALES = (1.0, 1e3, 1e6, 1e-3, 1e-6, 1e9, 1e-9)
+
+
+def _question_numbers(text):
+    return [float(match) for match in _NUMBER.findall(str(text or ""))]
+
+
+def _stated_in(value, numbers):
+    return any(
+        abs(value * scale - number) <= 1e-9 * max(1.0, abs(number))
+        for number in numbers for scale in _UNIT_SCALES
+    )
+
+
+def _ground_user_labels(parameter_mapping, question):
+    """`user_specified` is for a number the question itself gives; any other label is repaired.
+
+    A value copied from another figure's caption or a worked example, or one the agent picked, is
+    not the user's. Left as `user` it reads as a decision the person made and hides a choice they
+    still have to approve, so it becomes `model_assumption` here, once, where the label is set.
+    Numeric values only: a name such as a theory or a microstructure is not matched against prose.
+    """
+    numbers = _question_numbers(question)
+    repairs = []
+    for index, item in enumerate(parameter_mapping or ()):
+        if not isinstance(item, dict) or item.get("provenance_class") != "user_specified":
+            continue
+        value = item.get("mapped_value")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or _stated_in(float(value), numbers):
+            continue
+        item["provenance_class"] = "model_assumption"
+        note = "The question does not give this value; it was relabelled from user_specified."
+        item["rationale"] = ("%s %s" % (str(item.get("rationale") or "").strip(), note)).strip()
+        repairs.append({
+            "field": "parameter_mapping[%d].provenance_class" % index,
+            "from": "user_specified", "to": "model_assumption",
+            "reason": "%s = %s is not in the question" % (item.get("model_input"), value),
+        })
+    return repairs
+
+
+def _advisory_warnings(advisories):
+    """What the plan could not show, as warnings a reviewer reads, not reasons to refuse it.
+
+    A plan is refused for what would make a run meaningless or a figure impossible: a value
+    outside the model's declaration, a sweep that cannot move its output, a chart its runs cannot
+    draw. Missing sources, thin protocol fields and coverage of the question are the reviewer's
+    to weigh, so they travel with the plan and show in its "Things to check".
+    """
+    out = []
+    for summary, data in advisories:
+        detailed = [item for item in data.get("problems") or () if isinstance(item, dict)]
+        if detailed:
+            out.extend(
+                {
+                    "code": data.get("error_code"),
+                    "field": item.get("field"),
+                    "expected": item.get("expected"),
+                    "actual": item.get("actual"),
+                    "message": item.get("message") or "",
+                    "detail": item.get("repair") or "",
+                    "blocking": False,
+                }
+                for item in detailed
+            )
+        else:
+            out.append({
+                "code": data.get("error_code"),
+                "message": summary,
+                "detail": "; ".join(str(item) for item in data.get("problems") or ()),
+                "blocking": False,
+            })
+    return out
 
 
 def propose(
@@ -116,15 +193,20 @@ def propose(
     )
     selected_models = _enrich_selected_models(session, selected_models)
     parameter_mapping = _clean_parameter_mapping(parameter_mapping)
+    label_repairs = _ground_user_labels(parameter_mapping, people_said(session, question))
     outputs = _clean_outputs(outputs)
     if not question or not objective or not hypothesis:
         return _fail("A proposal requires question, objective and hypothesis.")
     if not charts:
         return _fail("A proposal requires at least one chart option with x and y fields.")
     refusals = []
+    advisories = []
 
     def refuse(summary, data):
         refusals.append((summary, data))
+
+    def advise(summary, data):
+        advisories.append((summary, data))
 
     if run_problems:
         run_refusal = (
@@ -145,7 +227,7 @@ def propose(
         return _fail("A proposal requires at least one explicit registered physical-model run.")
     steps, structural_repairs = _repair_missing_protocol_steps(steps, runs, charts)
     if len(steps) < 3:
-        refuse(
+        advise(
             "A proposal requires at least three executable research steps.",
             {
                 "error_code": "steps_missing",
@@ -237,7 +319,7 @@ def propose(
         if not values
     ]
     if quality_problems:
-        refuse(
+        advise(
             "The proposal is a computation checklist, not yet a scientific protocol. Add: %s."
             % ", ".join(quality_problems),
             {
@@ -279,15 +361,39 @@ def propose(
         item for item in evidence_problems if not item.get("blocking", True)
     ]
     blocking_evidence = [item for item in evidence_problems if item.get("blocking", True)]
-    if blocking_evidence:
+    # A problem that names an allowed set (an input the model does not declare, a section that
+    # was never opened) is a wrong name, and a wrong name is refused. One that only says a source
+    # is missing or thin is advice: it shows in the plan's "Things to check".
+    # How a target is covered by runs is a judgement (the paper's reference models against the
+    # runs' model), so it is advice even though it lists the names the paper used.
+    def _wrong_name(item):
+        if item.get("physical"):
+            return True  # a thin layer where the paper states a semi-infinite one makes a wrong figure
+        return bool(item.get("allowed_values")) and not str(item.get("field", "")).startswith(
+            "reproduction_targets"
+        )
+
+    wrong_names = [item for item in blocking_evidence if _wrong_name(item)]
+    missing_sources = [item for item in blocking_evidence if not _wrong_name(item)]
+    if wrong_names:
         refuse(
-            _evidence_problem_summary(question, blocking_evidence),
+            _evidence_problem_summary(question, wrong_names),
             {
                 "error_code": "reproduction_evidence_incomplete",
                 "stage": "reproduction_metadata",
-                "problem_count": len(blocking_evidence),
+                "problem_count": len(wrong_names),
                 "problems": evidence_problems,
                 "repair_hints": [item.get("repair") for item in evidence_problems if item.get("repair")],
+            },
+        )
+    if missing_sources:
+        advise(
+            _evidence_problem_summary(question, missing_sources),
+            {
+                "error_code": "reproduction_evidence_incomplete",
+                "stage": "reproduction_metadata",
+                "problem_count": len(missing_sources),
+                "problems": missing_sources,
             },
         )
     coverage_problems, linked_runs, linked_charts = _target_coverage(
@@ -304,6 +410,7 @@ def propose(
             )
     automatic_repairs = list(run_repairs)
     automatic_repairs.extend(structural_repairs)
+    automatic_repairs.extend(label_repairs)
     automatic_repairs.extend(reference_repairs)
     automatic_repairs.extend(metadata_repairs)
     automatic_repairs.extend(baseline_repairs)
@@ -352,7 +459,7 @@ def propose(
         ((session.get("research_context") or {}).get("question") or ""),
     )
     if question_problems:
-        refuse(
+        advise(
             "The plan does not measure every quantity or attribution requested by the question: %s"
             % "; ".join(question_problems),
             {"error_code": "question_coverage", "problems": question_problems},
@@ -391,6 +498,7 @@ def propose(
             list(context_warnings)
             + nonblocking_evidence_warnings
             + evidence.legend_coverage_warnings(session, reproduction_targets, runs)
+            + _advisory_warnings(advisories)
         ),
         # What the reviewed check could not account for, not what the question happened
         # to mention. The registry decides support; this records its finding so the
@@ -429,6 +537,10 @@ def propose(
         "proposed_by": "llm",
     }
     summary = "LLM-authored research plan v001 is ready for human review."
+    if advisories:
+        summary += " %d point(s) are listed under Things to check; they do not block the plan." % len(
+            plan["validation_warnings"]
+        )
     if automatic_repairs:
         summary += (
             " Backend applied %d auditable reference/presentation repair(s); review them explicitly."

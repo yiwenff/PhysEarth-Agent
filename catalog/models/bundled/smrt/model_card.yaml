@@ -61,9 +61,16 @@ parameters:
     unit: m
     description: >-
       Snow layer thickness. Thin layers over vacuum are optically shallow and unphysical.
-      At microwave frequencies the result saturates within a few metres, so values far
-      above that are a numerical stand-in for a semi-infinite medium rather than a real
-      snowpack depth.
+      How deep the result keeps changing depends on frequency and grain size, so there is no
+      single safe default. Measured to within 0.5 K of a 1000 m layer for exponential
+      microstructure at 300 kg m-3: about 1 m at 89 GHz, 10 m at 37 GHz with 0.15 mm, 50 m at
+      18.7 GHz with 0.1 to 0.25 mm, and more than 200 m at 6.9 GHz. Values past that depth are
+      a numerical stand-in for a semi-infinite medium rather than a real snowpack depth; a
+      layer shallower than it gives a lower brightness temperature than the paper's
+      semi-infinite snowpack (153.7 K at 5 m against 227.0 K at 50 m or more, V polarisation,
+      18.7 GHz, 0.25 mm). When the study does not state a thickness, check once, for yourself,
+      at its frequency that a larger value gives the same result before choosing a small one;
+      that check is not a figure to add to a reproduction.
     minimum: 0.01
     maximum: 500.0
     default: 1.0
@@ -115,7 +122,11 @@ parameters:
   stickiness:
     type: number
     unit: none
-    description: Stickiness of the sticky hard sphere model. Lower means more clustering.
+    description: >-
+      Stickiness of the sticky hard sphere model. Lower means more clustering, and a
+      stickiness of 0.5 and one of 0.15 draw clearly different curves. Snow studies converge on 0.1 to
+      0.2 (the default is 0.2). A test case in a paper, such as one figure's 0.5, is not a value
+      for another figure; when the study gives none, use the default and say so.
     minimum: 0.05
     maximum: 1000.0
     default: 0.2
@@ -129,6 +140,19 @@ parameters:
     minimum: 4
     maximum: 128
     default: 32
+    required: false
+  dense_snow_correction:
+    type: string
+    unit: none
+    description: >-
+      How snow denser than half the ice density (about 458 kg m-3) is treated. none leaves
+      SMRT's default, where the scattering coefficients extend smoothly past that density.
+      auto switches from ice-in-air to air-in-ice there, as SMRT-IBA studies of dense firn
+      do, which makes brightness temperature jump by tens of kelvin across 458 kg m-3 at
+      18.7 GHz with a deep layer. It changes nothing below that density. Only the improved
+      Born approximation (iba) and the short-range DMRT theories accept it.
+    enum: [none, auto]
+    default: none
     required: false
   sweep_parameter:
     type: string
@@ -159,6 +183,16 @@ parameters:
     maximum: 60
     default: 10
     required: false
+  sweep_scale:
+    type: string
+    unit: none
+    description: >-
+      How the sweep is spaced. linear spaces the points evenly; log spaces them evenly in
+      the logarithm, for a parameter that spans orders of magnitude such as stickiness from
+      0.1 to 50, and needs a start and stop above zero.
+    enum: [linear, log]
+    default: linear
+    required: false
 
 # The parameter that selects the scattering theory: a question that compares formulations
 # is answered by runs that differ in it.
@@ -181,6 +215,12 @@ combinations:
     reason: >-
       SMRT's Rayleigh implementation reads a particle radius, so it requires a sphere-based
       microstructure rather than an autocorrelation-function microstructure.
+  - when: {electromagnetic_model: [iba_original, rayleigh, symsce_torquato21]}
+    allow: {dense_snow_correction: [none]}
+    reason: >-
+      SMRT implements the dense-snow switch only in the improved Born approximation and the
+      short-range DMRT theories; the original IBA returns zero brightness temperature past
+      the switch and the other two reject the option.
 
 outputs:
   tb_v:

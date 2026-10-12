@@ -219,8 +219,10 @@ def test_the_capability_summary_names_outputs_no_card_declares():
         owner=owner,
         session=session,
     )
-    assert result["status"] == "needs_input"
+    # An output no model declares is computed by a script, so it is stated and does not stop the plan.
+    assert result["status"] == "success"
     assert "Outputs no registered model declares: published_et0" in result["summary"]
+    assert "Computed by script" in result["summary"]
 
 
 def test_a_versioned_local_candidate_is_reported_as_supported():
@@ -234,3 +236,29 @@ def test_a_versioned_local_candidate_is_reported_as_supported():
     )
     assert [item["model"] for item in report["supported"]] == ["pywatershed"]
 
+
+@pytest.mark.parametrize("name", ["MEMLS-IBA (grain type 2, six-flux solver)", "MEMLS-IBA", "MEMLS-IBA (default)", "DMRT-QMS", "DMRT-ML"])
+def test_another_model_that_shares_a_theory_word_does_not_resolve(name):
+    """MEMLS uses IBA too; the shared word must not make MEMLS a configuration of smrt."""
+    assert registry.resolve_configuration(name)[0] is None
+
+
+@pytest.mark.parametrize("name, configuration", [
+    ("Non-sticky hard spheres (DMRT QCA-CP)", {"microstructure_model": "non_sticky_hard_spheres"}),
+    ("Independent spheres + Rayleigh", {"electromagnetic_model": "rayleigh", "microstructure_model": "independent_sphere"}),
+    ("DMRT QCA-CP", {"electromagnetic_model": "dmrt_qcacp_shortrange"}),
+    # "default" qualifies the configuration; it does not name another model.
+    ("SMRT IBA default", {"electromagnetic_model": "iba"}),
+    ("SMRT IBA original", {"electromagnetic_model": "iba_original"}),
+])
+def test_a_legend_written_in_the_cards_vocabulary_still_resolves(name, configuration):
+    entry, canonical, found, _options = registry.resolve_configuration(name)
+    assert canonical == "smrt" and found == configuration
+
+
+def test_a_theory_written_out_with_its_own_initials_is_that_theory_but_another_models_note_is_not():
+    from physearth.research import capability
+
+    assert capability._spelled_out("Improved Born approximation (IBA)") == "IBA"
+    assert capability._spelled_out("MEMLS (IBA)") is None
+    assert capability._spelled_out("Rayleigh (independent spheres)") is None

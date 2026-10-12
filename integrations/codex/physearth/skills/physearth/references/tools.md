@@ -17,8 +17,8 @@ replacing the schema.
 | `physearth_ask` | `question` | A whole question in one call: the agent plans, runs registered models and reports the evidence it used. Optional `session_id`, `model`. Returns `awaiting_approval` with a `pending` run when the turn stops for a verdict. |
 | `physearth_decide` | `session_id`, `decision` | The user's verdict on a pending run, `approve` or `reject`. A paused question resumes where it stopped; a held `run_model` call runs or comes back declined. Only with the user's own answer. |
 | `physearth_evidence` | — | The audit trail for a session: sections read, models run, datasets queried, method notes, result handles, figures. Cite this, not your recollection. |
-| `physearth_verify_report` | `session_id`, `text` | Check an answer you wrote against the session before giving it: every marker must resolve to evidence the session gathered, and `[abs:doi]` may carry no result value. Failed checks come with the fix. |
-| `physearth_render_report` | `session_id`, `text` | After the plan is approved, run hard report verification and return formatted Markdown and HTML. Refuses to materialize an unapproved or unverifiable report. |
+| `physearth_verify_report` | `session_id`, `text` | Check an answer you wrote against the session before giving it: every marker must resolve to evidence the session gathered, and `[abs:doi]` may carry no result value. Those failures come with the fix. Notes about wording and layout (the value the question asked for, the tagged appendix, the parameter block) pass the report and are listed under `notes`. |
+| `physearth_render_report` | `session_id`, `text` | After the plan is approved, run hard report verification and return formatted Markdown and HTML. The HTML is the report page the Studio writes: figures the session drew, the conditions and runs as tables, source labels, citation markers. Refuses to materialize an unapproved or unverifiable report. |
 | `physearth_prompt_stack` | — | The rules the engine itself answers under: citation and evidence-tier policy, the untrusted-text boundary, the research workflow. |
 
 ## Models and runs
@@ -35,6 +35,7 @@ replacing the schema.
 | Tool | Required | What it is for |
 |---|---|---|
 | `list_literature` | — | Search what this conversation can already read: the bundled corpus, papers taken in with `ingest_paper`, the method notes. Optional `query`, `scenario`, `kind`. |
+| `read_paper_digest` | `slug` | A whole paper read once per session: what each figure plots, stated results and ranges, configurations and limitations, each with a citable section marker. Call it first for a paper you will plan or report from; a second call is free. |
 | `read_literature` | — | One paper. With only `slug`: its section index. With `section_id`: compact key information by default; use `detail=full` and a targeted `focus` only for a missing detail. This is what a `[paper#section]` citation resolves against. |
 | `read_paper_figure` | `paper`, `figure_id` | Metadata and the stored source asset for one extracted figure. Repeated reads in a session return cached metadata. |
 | `inspect_paper_figure` | `paper`, `figure_id` | Inspect a figure only when required axes, legend or conditions remain missing. Repeated focus requests are cached. |
@@ -56,7 +57,9 @@ replacing the schema.
 | `read_research_guideline` | — | Read before proposing or reporting research. Optional `topic`. |
 | `research_plan` | `action` | `propose`, then the review transitions. The plan is structured: steps, parameter mapping, outputs, charts, success criteria, stop conditions. |
 | `physearth_plan_status` | — | The plan and its review state, so a host can show the human review step before anything expensive runs. |
-| `physearth_review` | `session_id`, `choice` | Advance the human review gate — the same single action the Studio's review button takes. |
+| `physearth_plan_export` | `session_id` | The current plan as an editable Markdown document with stable row ids, as YAML/JSON, or with `format=html` as the same plan page the Studio shows. Read-only; edits go back through `physearth_plan_apply`. The Source column uses the Studio's words: `extracted`, `derived`, `user`, `default`, `assumed`, `guessed`. |
+| `physearth_plan_apply` | `session_id`, `document`, `base_plan_version`, `base_document_hash` | Apply an edited Markdown plan. Row ids and read-only columns are checked, editable cells become a validated `research_plan` revision, and the plan returns to human review. |
+| `physearth_review` | `session_id`, `choice` | Advance the human review gate. `approve` is one decision for the plan, its required figures and their execution, the same as typing `approve` in the Studio's Conversation; `preview` first draws the layout from pseudo-data. To change a plan, revise it with `physearth_plan_apply`; `reject` only points there. |
 
 ## Registering and extending
 

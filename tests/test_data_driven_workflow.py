@@ -220,11 +220,12 @@ def test_reproduction_plan_requires_explicit_targets_and_parameter_mapping():
     box = session.new_session("m")
     _reproduction_resources(box)
     base = _valid_plan(box, "Can the paper's Figure 3 coefficient result be reproduced?")
-    # The ordinary plan is valid, but a paper reproduction must name the evidence target
-    # and map its paper concepts to exact registered inputs.
-    assert base["status"] == "terminal_error"
-    assert base["data"]["error_code"] == "reproduction_evidence_incomplete"
-    assert any(item["field"] == "reproduction_targets" for item in base["data"]["problems"])
+    # The plan runs, but a paper reproduction should name the evidence target and map its paper
+    # concepts to exact registered inputs. Missing, it is listed for the reviewer, not refused.
+    assert base["status"] == "needs_input"
+    warned = base["data"]["plan"]["validation_warnings"]
+    assert any(item.get("field") == "reproduction_targets" for item in warned)
+    assert all(item.get("blocking") is False for item in warned if item.get("code"))
 
 
 def test_reproduction_plan_links_target_to_runs_and_charts_and_revalidates_revisions():
@@ -573,6 +574,7 @@ def test_reproduction_revision_accepts_user_range_inside_registered_model_bounds
     proposed = tools.call("research_plan", _q1_plan_fields(_q1_runs()), session=box)
     assert proposed["status"] == "needs_input", proposed
 
+    box["user_messages"] = ["Change the density range to 1-300 kg/m3."]  # the person asked for it
     expanded = _q1_runs()
     for run in expanded:
         run["parameters"]["sweep_start"] = 1.0
