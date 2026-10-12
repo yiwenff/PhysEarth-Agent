@@ -926,6 +926,17 @@ with gr.Blocks(title="PhysEarth-Agent", fill_height=True) as demo:
                                     elem_classes=["eval-demo-button"],
                                 )
                                 guided_demo_buttons.append((button, case["question"], case["id"]))
+                        for case in evals.future_directions():
+                            with gr.Column(elem_classes=["eval-demo-cell"]):
+                                gr.HTML(evals.future_card(case), elem_classes=["pe-eval-slot"])
+                                if case.get("question"):
+                                    button = gr.Button(
+                                        case.get("button_label", "Try in Live Agent"),
+                                        elem_classes=["eval-demo-button"],
+                                    )
+                                    guided_demo_buttons.append(
+                                        (button, case["question"].strip(), case["id"])
+                                    )
                     gr.HTML(evals.q1_comparison(), elem_classes=["pe-eval-slot"])
                     gr.HTML(evals.architecture(), elem_classes=["pe-eval-slot"])
 

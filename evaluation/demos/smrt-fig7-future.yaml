@@ -1,0 +1,32 @@
+id: smrt-fig7-future
+kind: future_direction
+eyebrow: NOT YET SUPPORTED · FUTURE DIRECTION
+title: Figure 7, an equivalence the agent cannot solve yet
+summary: >-
+  Figure 7 asks how much non-sticky grains must be enlarged to behave like sticky ones: for
+  each stickiness and density, the grain-size factor at which two SMRT configurations give the
+  same brightness temperature. Every curve is an SMRT result, but each point is a solved value,
+  not a run.
+question: >-
+  Reproduce Figure 7 of the SMRT paper: for each stickiness and snow density, find the
+  grain-size scaling factor at which non-sticky hard spheres give the same brightness
+  temperature as sticky hard spheres.
+expected: >-
+  The agent reads the paper, reports that exact reproduction is not possible because no
+  registered model or tool computes the solved scaling factor, and offers only a partial plan
+  for the part it can do (sweep and plot). No model is run and no figure is claimed.
+button_label: "Try it (the agent should decline)"
+paper: smrt-v1
+paper_section: "3.2"
+paper_figures: [fig07.png]
+can_do:
+  - Read the paper and Figure 7, and explain the equivalence it shows.
+  - Run both configurations (sticky and non-sticky hard spheres, IBA, TB V at 55 degrees) over radius or stickiness.
+  - Plot those runs against each other.
+cannot_do:
+  - Solve for the scaling factor at which the two runs agree. That is a root search of about ten SMRT runs per point, roughly 1,500 runs for the figure (30 grain sizes, 5 densities, about ten runs each); the agent can sweep and plot, but it has no tool that solves for a parameter.
+  - Report a curve built that way with the same provenance checks as a run, because nothing records how a solved value was found.
+needed: >-
+  A bounded, auditable equivalence tool: given two run configurations and one free parameter, find the value at which a chosen output agrees, record every run of the search, and return the solved value with its tolerance as a result the plan, chart and report can cite. It would also reach Figure 8, which matches an exponential microstructure to sticky spheres the same way.
+evidence: >-
+  Reproduced offline by script with SMRT 1.5.1 through the registered adapter: all five density curves to within 0.0013 of the published curves (base radius 100 um, not stated in the paper). The paper's text puts phi = 2.1 at stickiness 0.13; its own figure, and the reproduction, put it at 0.14-0.16.
