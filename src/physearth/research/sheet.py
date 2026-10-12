@@ -14,7 +14,7 @@ import json
 
 from physearth import registry
 
-_SWEEP_FIELDS = ("sweep_parameter", "sweep_start", "sweep_stop", "sweep_points")
+_SWEEP_FIELDS = ("sweep_parameter", "sweep_start", "sweep_stop", "sweep_points", "sweep_scale")
 
 # How a recorded provenance class reads to a person. The last two tags are the ones a reviewer
 # decides: a value the agent chose with no source, with or without a stated reason.
@@ -180,7 +180,8 @@ def _sweep_text(params, model=""):
     spec = _spec(model, name) if model else {}
     return "%s from %s to %s%s" % (
         named(name, spec), fmt(params.get("sweep_start")), with_unit(params.get("sweep_stop"), spec.get("unit")),
-        " (%s points)" % fmt(points) if points not in (None, "") else "",
+        " (%s points%s)" % (fmt(points), ", log-spaced" if params.get("sweep_scale") == "log" else "")
+        if points not in (None, "") else (" (log-spaced)" if params.get("sweep_scale") == "log" else ""),
     )
 
 

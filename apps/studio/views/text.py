@@ -7,19 +7,8 @@ and model output are all untrusted input on a public deployment.
 This module is the bottom of that: escaping, icons, citation markers, prose.
 """
 
-import html
-import re
+from physearth.api import agent, documents
 
-from physearth.api import agent
-
-CITE = re.compile(r"\[([a-z0-9][a-z0-9-]*)#(\d{1,3})\]")
-MODEL_CITE = re.compile(r"\[model:([A-Za-z0-9_-]+)@([^\]\s]+)\]")
-DATA_CITE = re.compile(r"\[data:([a-z0-9][a-z0-9-]*)\]")
-ABS_CITE = re.compile(r"\[abs:(10\.\d{4,9}/[^\]\s]+)\]", re.I)
-SKILL_CITE = re.compile(r"\[skill:([a-z0-9][a-z0-9-]*)\]")
-BOLD = re.compile(r"\*\*([^*]+)\*\*")
-CODE = re.compile(r"`([^`]+)`")
-SAFE_SUB = re.compile(r"&lt;(/?)(sub|sup)&gt;", re.I)
 SECTION_PREVIEW_CHARS = 620
 
 
@@ -45,87 +34,8 @@ def _svg(name, cls):
     )
 
 
-def _e(value):
-    return html.escape(str(value), quote=True)
-
-
 def _mono(value):
     return "<span class='mono'>%s</span>" % _e(value)
-
-
-def _markers(text):
-    """Turn the four marker forms into chips that jump to the evidence they name."""
-
-    # Every closure below runs over text that _inline has already escaped, so none of
-    # them escapes again: a second pass turns an ampersand inside a DOI into &amp;amp;.
-    def section(match):
-        key = "%s#%s" % (match.group(1), match.group(2))
-        return (
-            "<a class='cite' href='#' data-jump='sec-%s' data-tab='pe-tab-sources'>%s</a>"
-            % (key, key)
-        )
-
-    def model(match):
-        key = "%s@%s" % (match.group(1), match.group(2))
-        return (
-            "<a class='cite cite--model' href='#' data-jump='model-%s' "
-            "data-tab='pe-tab-models'>%s</a>" % (match.group(1), key)
-        )
-
-    def data(match):
-        slug = match.group(1)
-        return (
-            "<a class='cite cite--data' href='#' data-jump='data-%s' "
-            "data-tab='pe-tab-sources'>%s</a>" % (slug, slug)
-        )
-
-    def abstract(match):
-        doi = match.group(1)
-        return (
-            "<a class='cite cite--abs' href='#' data-jump='abs-%s' "
-            "data-tab='pe-tab-sources' title='abstract level: metadata only, never a "
-            "measured or computed value'>abs:%s</a>" % (doi, doi)
-        )
-
-    def skill(match):
-        slug = match.group(1)
-        return (
-            "<a class='cite cite--skill' href='#' data-jump='sec-%s#00' "
-            "data-tab='pe-tab-sources' title='the agent opened this method note before "
-            "writing this sentence'>%s</a>" % (slug, slug)
-        )
-
-    # The abstract form goes first: some DOIs would otherwise be eaten by the model pattern.
-    text = ABS_CITE.sub(abstract, text)
-    text = SKILL_CITE.sub(skill, text)
-    text = CITE.sub(section, text)
-    text = MODEL_CITE.sub(model, text)
-    return DATA_CITE.sub(data, text)
-
-
-def _paragraphs(text):
-    blocks = []
-    for raw in re.split(r"\n\s*\n", text.strip()):
-        lines = [line.strip() for line in raw.splitlines() if line.strip()]
-        if not lines:
-            continue
-        if len(lines) == 1:
-            heading = re.match(r"^(#{1,3})\s+(.+)$", lines[0])
-            if heading:
-                level = len(heading.group(1))
-                blocks.append(
-                    "<h%d>%s</h%d>" % (level, _inline(heading.group(2)), level)
-                )
-                continue
-        if _is_table(lines):
-            blocks.append(_table(lines))
-            continue
-        if all(line.startswith(("- ", "* ")) for line in lines):
-            items = "".join("<li>%s</li>" % _inline(line[2:]) for line in lines)
-            blocks.append("<ul>%s</ul>" % items)
-        else:
-            blocks.append("<p>%s</p>" % _inline(" ".join(lines)))
-    return "".join(blocks)
 
 
 def answer_html(text, running=False):
@@ -148,49 +58,20 @@ def answer_html(text, running=False):
         body += "<span class='caret'></span>"
     return body
 
-
-def _inline(text):
-    out = _e(text)
-    out = CODE.sub(lambda m: "<code>%s</code>" % m.group(1), out)
-    out = BOLD.sub(lambda m: "<b>%s</b>" % m.group(1), out)
-    # Allow only the two typographic equation tags after escaping. Attributes and every
-    # other HTML tag remain escaped, so model output cannot inject markup or scripts.
-    out = SAFE_SUB.sub(lambda m: "<%s%s>" % (m.group(1), m.group(2).lower()), out)
-    return _markers(out)
-
-
-TABLE_RULE = re.compile(r"^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$")
-
-
-def _cells(line):
-    line = line.strip()
-    if line.startswith("|"):
-        line = line[1:]
-    if line.endswith("|"):
-        line = line[:-1]
-    return [cell.strip() for cell in line.split("|")]
-
-
-def _is_table(lines):
-    """A Markdown pipe table: a header row, a rule row, then rows, every one piped."""
-    return (
-        len(lines) >= 2
-        and all(line.startswith("|") for line in lines)
-        and bool(TABLE_RULE.match(lines[1].replace(" ", "")))
-    )
-
-
-def _table(lines):
-    head = _cells(lines[0])
-    rows = [_cells(line) for line in lines[2:]]
-    return (
-        "<div class='md-table-wrap'><table class='md-table'><thead><tr>%s</tr></thead>"
-        "<tbody>%s</tbody></table></div>"
-        % (
-            "".join("<th>%s</th>" % _inline(cell) for cell in head),
-            "".join(
-                "<tr>%s</tr>" % "".join("<td>%s</td>" % _inline(cell) for cell in row)
-                for row in rows
-            ),
-        )
-    )
+# Rendered once, in the package, so the Studio and the MCP server draw the same pages.
+ABS_CITE = documents.ABS_CITE
+BOLD = documents.BOLD
+CITE = documents.CITE
+CODE = documents.CODE
+DATA_CITE = documents.DATA_CITE
+MODEL_CITE = documents.MODEL_CITE
+SAFE_SUB = documents.SAFE_SUB
+SKILL_CITE = documents.SKILL_CITE
+TABLE_RULE = documents.TABLE_RULE
+_cells = documents._cells
+_e = documents._e
+_inline = documents._inline
+_is_table = documents._is_table
+_markers = documents._markers
+_paragraphs = documents._paragraphs
+_table = documents._table

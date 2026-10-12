@@ -258,9 +258,9 @@ def test_research_plan_preview_is_structured_and_keeps_yaml_in_a_disclosure():
     from apps.studio.views import exports
 
     page = exports.plan_document(box)
-    assert "Conditions and runs" in page and "Runs, only what differs" in page
+    assert "What will be run" in page and "Runs, only what differs" in page
     assert "Resolved parameters" not in page
-    assert "What is reproduced" in page and "Things to check" in page
+    assert "Reproduces:" in page and "Things to check" in page
     assert "plan has 1" in page
     # Machinery a reviewer does not decide on stays off the page.
     assert "Literature evidence" not in page and "Paper concept" not in page
