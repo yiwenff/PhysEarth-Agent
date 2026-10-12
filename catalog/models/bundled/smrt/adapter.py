@@ -34,6 +34,13 @@ def _is_dort_diagonalization_error(exc):
     )
 
 
+def _emmodel_options(values):
+    """SMRT electromagnetic-model options; the dense-snow switch only when asked for."""
+    if values.get("dense_snow_correction") == "auto":
+        return {"dense_snow_correction": "auto"}
+    return {}
+
+
 def _run_with_dort_recovery(values, sensor, snowpack):
     """Retry numerical diagonalization without changing any physical parameter.
 
@@ -52,6 +59,7 @@ def _run_with_dort_recovery(values, sensor, snowpack):
             model = make_model(
                 values["electromagnetic_model"],
                 "dort",
+                emmodel_options=_emmodel_options(values),
                 rtsolver_options=options,
             )
             return model.run(sensor, snowpack), method, failures
@@ -158,6 +166,12 @@ def _sensor(spec, overrides=None):
     return sensor_list.passive(frequency, angle)
 
 
+def _output_names(output):
+    if output == "sigma":
+        return ("sigma_vv_db", "sigma_hh_db", "sigma_hv_db")
+    return ("tb_v", "tb_h")
+
+
 def _extract(result, output):
     if output == "sigma":
         return {
@@ -194,7 +208,7 @@ def _coefficients(spec, overrides=None):
     snowpack = _snowpack(values)
     sensor = _sensor(dict(values, output="tb"))
     emmodel = import_class("emmodel", values["electromagnetic_model"])(
-        sensor, snowpack.layers[0]
+        sensor, snowpack.layers[0], **_emmodel_options(values)
     )
     mu = math.cos(math.radians(values["angle_deg"]))
     ks = _scalar(emmodel.ks(mu))
@@ -208,10 +222,51 @@ def _coefficients(spec, overrides=None):
     }
 
 
+def _unphysical(spec, overrides=None):
+    """Why the medium itself is not physical under the chosen theory, or "".
+
+    Short-range DMRT overestimates scattering for large grains or low stickiness until the
+    absorption coefficient it derives goes negative and the albedo passes 1 (SMRT says so
+    in its own DORT error). SMRT v1.0 failed there; with the numerical fallbacks below
+    SMRT 1.5.1 returns a brightness temperature anyway -- 264.7 K at 585 um, which passes
+    any range check. The coefficients show it before any solver runs.
+    """
+    try:
+        coefficients = _coefficients(spec, overrides)
+    except Exception:  # the solve will raise the real error
+        return ""
+    ka = coefficients["ka_per_m"]
+    albedo = coefficients["single_scattering_albedo"]
+    if ka < 0:
+        return "negative absorption coefficient (ka = %.3g m-1)" % ka
+    if albedo > 1:
+        return "single scattering albedo above 1 (%.3f)" % albedo
+    return ""
+
+
+def _sweep_values(spec):
+    """The swept values: evenly spaced, or evenly spaced in log for sweep_scale=log."""
+    start, stop = spec["sweep_start"], spec["sweep_stop"]
+    count = int(spec.get("sweep_points") or 10)
+    if spec.get("sweep_scale") == "log":
+        if start <= 0 or stop <= 0:
+            raise ValueError(
+                "sweep_scale=log needs sweep_start and sweep_stop above zero, got %s and %s"
+                % (start, stop)
+            )
+        if count == 1:
+            return [float(start)]
+        ratio = (stop / start) ** (1.0 / (count - 1))
+        return [start * ratio ** i for i in range(count - 1)] + [float(stop)]
+    step = (stop - start) / (count - 1) if count > 1 else 0.0
+    return [start + step * i for i in range(count)]
+
+
 def run(spec):
     _ensure_smrt_importable()
 
     coefficients_only = spec["output"] == "coefficients"
+    invalid = []
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -219,7 +274,11 @@ def run(spec):
         recoveries = []
 
         if swept == "none":
-            if coefficients_only:
+            reason = "" if coefficients_only else _unphysical(spec)
+            if reason:
+                invalid.append({"axis": None, "value": None, "reason": reason})
+                values = {key: float("nan") for key in _output_names(spec["output"])}
+            elif coefficients_only:
                 values = _coefficients(spec)
             else:
                 result, method, failures = _run_with_dort_recovery(
@@ -234,20 +293,20 @@ def run(spec):
                 "axis": None,
                 "points": [{"index": 0, **values}],
                 "series": {key: [value] for key, value in values.items()},
-                "diagnostics": {"solver_recoveries": recoveries},
+                "diagnostics": {"solver_recoveries": recoveries, "invalid_points": invalid},
             }
 
-        start = spec["sweep_start"]
-        stop = spec["sweep_stop"]
-        count = int(spec.get("sweep_points") or 10)
-        step = (stop - start) / (count - 1) if count > 1 else 0.0
-        axis_values = [start + step * i for i in range(count)]
+        axis_values = _sweep_values(spec)
 
         points = []
         series = {}
         for index, value in enumerate(axis_values):
             override = {swept: value}
-            if coefficients_only:
+            reason = "" if coefficients_only else _unphysical(spec, override)
+            if reason:
+                invalid.append({"axis": swept, "value": value, "reason": reason})
+                values = {key: float("nan") for key in _output_names(spec["output"])}
+            elif coefficients_only:
                 values = _coefficients(spec, override)
             else:
                 values_for_run = dict(spec)
@@ -280,5 +339,5 @@ def run(spec):
             "axis": {"name": swept, "values": axis_values},
             "points": points,
             "series": series,
-            "diagnostics": {"solver_recoveries": recoveries},
+            "diagnostics": {"solver_recoveries": recoveries, "invalid_points": invalid},
         }

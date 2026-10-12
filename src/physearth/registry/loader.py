@@ -298,6 +298,32 @@ def resolve(name, session=None):
     return model, canonical
 
 
+def _card_vocabulary(card):
+    words = set(re.split(r"[^a-z0-9]+", str(card.get("name") or "").lower()))
+    for parameter, spec in (card.get("parameters") or {}).items():
+        words.update(re.split(r"[^a-z0-9]+", parameter.lower()))
+        for value in (spec or {}).get("enum") or ():
+            words.update(re.split(r"[^a-z0-9]+", str(value).lower()))
+    for output in card.get("outputs") or {}:
+        words.update(re.split(r"[^a-z0-9]+", output.lower()))
+    return {word for word in words if word}
+
+
+# Qualifiers a legend adds to a model's own name ("SMRT IBA default"). They describe a
+# configuration; they never name another model, so they cannot make a name foreign.
+_QUALIFIER_WORDS = {"default", "version", "model", "standard", "current", "new", "old", "the", "with", "and", "v"}
+
+
+def _unexplained_words(name, card):
+    """Words of `name` that are not part of the card's vocabulary (numbers and qualifiers aside)."""
+    vocabulary = _card_vocabulary(card)
+    words = [
+        w for w in re.split(r"[^a-z0-9]+", str(name or "").lower())
+        if w and not w.isdigit() and w not in _QUALIFIER_WORDS
+    ]
+    return [w for w in words if not any(w in known for known in vocabulary)]
+
+
 def resolve_configuration(name, session=None):
     """Find a model named as a formulation of itself: "SMRT IBA", "SMRT QCA short range".
 
@@ -391,6 +417,13 @@ def resolve_configuration(name, session=None):
                     spanned.append((registered, candidate, parameter, value))
         bare.extend(exact or contained or spanned)
     if len({item[0] for item in bare}) != 1:
+        return None, None, {}, []
+    # Every word of a bare name has to mean something to the card that matched it. A legend
+    # entry ("Non-sticky hard spheres (DMRT QCA-CP)") is made of the card's own vocabulary;
+    # "MEMLS-IBA" and "DMRT-QMS" carry a word the card does not know, because they name
+    # another model that happens to use the same theory. Matching on the shared word
+    # reported MEMLS as supported by smrt.
+    if _unexplained_words(name, bare[0][1].card):
         return None, None, {}, []
 
     exact_hits = [item for item in bare if _spelling_key(item[3]) == key]

@@ -182,6 +182,11 @@ def _check_sweep(card, spec):
             )
     if spec["sweep_start"] == spec["sweep_stop"]:
         problems.append("sweep_start and sweep_stop are equal, which is not a sweep")
+    if spec.get("sweep_scale") == "log" and min(spec["sweep_start"], spec["sweep_stop"]) <= 0:
+        problems.append(
+            "sweep_scale = log needs sweep_start and sweep_stop above zero, got %s and %s"
+            % (spec["sweep_start"], spec["sweep_stop"])
+        )
     return problems
 
 
@@ -228,6 +233,23 @@ def quality_control(card, result):
                     "unit": declared["unit"],
                 }
             )
+
+    # Points the adapter refused because the medium is not physical under the chosen
+    # theory (negative absorption, albedo above 1). They are left out rather than solved,
+    # so the run fails QC visibly instead of passing with a plausible-looking number.
+    invalid = ((result or {}).get("diagnostics") or {}).get("invalid_points") or []
+    if invalid:
+        where = ", ".join(
+            "%s = %.4g" % (item.get("axis"), item.get("value"))
+            if item.get("axis") else "the requested point"
+            for item in invalid[:4]
+        )
+        checks.append(
+            {"check": "physical_medium", "passed": False, "invalid_points": len(invalid),
+             "detail": "%d point(s) refused as unphysical (%s) at %s%s; they are left out of "
+             "the series" % (len(invalid), invalid[0].get("reason"), where,
+                              " and more" if len(invalid) > 4 else "")}
+        )
 
     axis = (result or {}).get("axis")
     if axis:

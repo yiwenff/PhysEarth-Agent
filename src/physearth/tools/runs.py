@@ -182,6 +182,13 @@ def run_model(model, parameters=None, _owner=None, _switches=None, _session=None
     recovered = diagnostics.get("solver_recoveries") or []
     if recovered:
         summary += " DORT numerical recovery was used at %d point(s)." % len(recovered)
+    refused = diagnostics.get("invalid_points") or []
+    if refused:
+        summary += (
+            " %d point(s) were refused as unphysical (%s) and left out; the model is not valid "
+            "there, so report where the curve stops rather than a value."
+            % (len(refused), refused[0].get("reason"))
+        )
     return _ok(
         summary,
         {
